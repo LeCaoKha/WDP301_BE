@@ -1,62 +1,120 @@
-const Account = require('../models/Account');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const Account = require("../models/Account");
 
-//Register account
-exports.register = async (req, res) => {
+// Get all accounts
+exports.getAllAccounts = async (req, res) => {
   try {
-    const { username, email, password, role } = req.body;
-
-    // Check email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: 'Invalid email format' });
-    }
-
-    const existingAccount = await Account.findOne({ email });
-    if (existingAccount) {
-      return res.status(400).json({ message: 'Email already in use' });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newAccount = new Account({
-      username,
-      email,
-      password: hashedPassword,
-      role: role || 'driver',
-    });
-    await newAccount.save();
-    //  User profile
-    // const newUser = new User({ accountId: newAccount._id });
-    // await newUser.save();
-    // newAccount.userId = newUser._id;
-    // await newAccount.save();
-    res.status(201).json({
-      message: 'Account created successfully',
-      accountId: newAccount._id,
-    });
+    const accounts = await Account.find().select("-password");
+    res.status(200).json(accounts);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-//Login account
-exports.login = async (req, res) => {
+// Get account by id
+exports.getAccountById = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const account = await Account.findOne({ email });
+    const { id } = req.params;
+    const account = await Account.findById(id).select("-password");
     if (!account) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      return res.status(404).json({ message: "Account not found" });
     }
-    const isPasswordValid = await bcrypt.compare(password, account.password);
-    if (!isPasswordValid) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+    res.status(200).json(account);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Update account by id
+exports.updateAccountById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, email, phone, role, status } = req.body;
+
+    // optional: validate email/phone when provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: "Invalid email format" });
+      }
     }
-    const token = jwt.sign(
-      { accountId: account._id, role: account.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-    res.status(200).json({ token, accountId: account._id, role: account.role });
+    if (phone) {
+      const phoneRegex = /^\+?[0-9]{9,15}$/;
+      if (!phoneRegex.test(phone)) {
+        return res.status(400).json({ message: "Invalid phone format" });
+      }
+    }
+    if (status && !["active", "inactive"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    // prevent duplicate unique fields
+    if (email || phone || username) {
+      const conflict = await Account.findOne({
+        _id: { $ne: id },
+        $or: [
+          email ? { email } : null,
+          phone ? { phone } : null,
+          username ? { username } : null,
+        ].filter(Boolean),
+      });
+      if (conflict) {
+        if (email && conflict.email === email) {
+          return res.status(400).json({ message: "Email already in use" });
+        }
+        if (phone && conflict.phone === phone) {
+          return res.status(400).json({ message: "Phone already in use" });
+        }
+        if (username && conflict.username === username) {
+          return res.status(400).json({ message: "Username already in use" });
+        }
+      }
+    }
+
+    const updated = await Account.findByIdAndUpdate(
+      id,
+      { username, email, phone, role, status },
+      { new: true, runValidators: true }
+    ).select("-password");
+    if (!updated) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    res.status(200).json(updated);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Ban account by id (set status inactive)
+exports.banAccountById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await Account.findByIdAndUpdate(
+      id,
+      { status: "inactive" },
+      { new: true }
+    ).select("-password");
+    if (!updated) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    res.status(200).json(updated);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Unban account by id (set status active)
+exports.unbanAccountById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await Account.findByIdAndUpdate(
+      id,
+      { status: "active" },
+      { new: true }
+    ).select("-password");
+    if (!updated) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    res.status(200).json(updated);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
