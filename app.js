@@ -9,6 +9,8 @@ var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 const mongoose = require('mongoose');
 const accountRouter = require('./routes/accountRouter');
+const stationRouter = require('./routes/stationRouter');
+const chargingRouter = require('./routes/chargingRouter');
 var app = express();
 // mongodb connection
 mongoose
@@ -29,6 +31,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/api/accounts', accountRouter);
+app.use('/api/stations', stationRouter);
+app.use('/api/chargingpoints', chargingRouter);
 const swaggerDocs = require('./swagger');
 swaggerDocs(app, process.env.PORT || 5000);
 
