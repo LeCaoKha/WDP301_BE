@@ -4,6 +4,7 @@ const stationSchema = new mongoose.Schema({
   address: String,
   latitude: Number,
   longitude: Number,
+  connector_type: { type: String, enum: ['AC', 'DC'], required: true },
   status: {
     type: String,
     enum: ['online', 'offline', 'maintenance'],

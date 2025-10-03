@@ -5,7 +5,6 @@ const chargingPointSchema = new mongoose.Schema({
     ref: 'Station',
     required: true,
   },
-  connector_type: { type: String, enum: ['AC', 'DC'], required: true },
   power_capacity: { type: Number, required: true },
   status: {
     type: String,
