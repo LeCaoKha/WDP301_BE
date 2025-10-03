@@ -1,9 +1,10 @@
 const express = require('express');
+const { authenticateToken } = require("../middleware/auth");
 const StationController = require('../controllers/stationController.js');
 const router = express.Router();
-router.post('/', StationController.createStation);
-router.get('/', StationController.getStations);
-router.get('/:id', StationController.getStationById);
-router.put('/:id', StationController.updateStation);
-router.delete('/:id', StationController.deleteStation);
+router.post('/', authenticateToken, StationController.createStation);
+router.get('/', authenticateToken, StationController.getStations);
+router.get('/:id', authenticateToken, StationController.getStationById);
+router.put('/:id', authenticateToken, StationController.updateStation);
+router.delete('/:id', authenticateToken, StationController.deleteStation);
 module.exports = router;
