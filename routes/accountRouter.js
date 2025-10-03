@@ -1,18 +1,51 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const accountController = require('../controllers/accountController');
+const accountController = require("../controllers/accountController");
 
-// Register route
-router.post('/register', accountController.register);
-// Login route
-router.post('/login', accountController.login);
+// Account management routes
+router.get("/", accountController.getAllAccounts);
+router.get("/:id", accountController.getAccountById);
+router.put("/:id", accountController.updateAccountById);
+router.patch("/:id/ban", accountController.banAccountById);
+router.patch("/:id/unban", accountController.unbanAccountById);
 module.exports = router;
+
 /**
  * @swagger
- * /api/accounts/register:
- *   post:  
- *     summary: Register a new account
+ * /api/accounts:
+ *   get:
+ *     summary: Get all accounts
  *     tags: [Account]
+ *     responses:
+ *       200:
+ *         description: List of accounts
+ */
+/**
+ * @swagger
+ * /api/accounts/{id}:
+ *   get:
+ *     summary: Get account by id
+ *     tags: [Account]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Account detail
+ *       404:
+ *         description: Account not found
+ *   put:
+ *     summary: Update account by id
+ *     tags: [Account]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
  *     requestBody:
  *       required: true
  *       content:
@@ -24,45 +57,53 @@ module.exports = router;
  *                 type: string
  *               email:
  *                 type: string
- *               password:
+ *               phone:
  *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [driver, admin, staff]
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
  *     responses:
  *       200:
- *         description: Account created successfully
+ *         description: Updated account
+ *       404:
+ *         description: Account not found
  */
 /**
  * @swagger
- * /api/accounts/login:
- *   post:
- *     summary: Login to an account
+ * /api/accounts/{id}/ban:
+ *   patch:
+ *     summary: Ban account by id (set status inactive)
  *     tags: [Account]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               email:
- *                 type: string
- *                 example: test@gmail.com
- *               password:
- *                 type: string
- *                 example: 123456
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: Login successful
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 token:
- *                   type: string
- *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *       401:
- *         description: Invalid credentials
+ *         description: Banned account
+ *       404:
+ *         description: Account not found
+ */
+/**
+ * @swagger
+ * /api/accounts/{id}/unban:
+ *   patch:
+ *     summary: Unban account by id (set status active)
+ *     tags: [Account]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Unbanned account
+ *       404:
+ *         description: Account not found
  */
