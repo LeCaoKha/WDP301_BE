@@ -1,13 +1,19 @@
 const express = require("express");
 const router = express.Router();
 const accountController = require("../controllers/accountController");
+const { authenticateToken } = require("../middleware/auth");
 
 // Account management routes
-router.get("/", accountController.getAllAccounts);
-router.get("/:id", accountController.getAccountById);
-router.put("/:id", accountController.updateAccountById);
-router.patch("/:id/ban", accountController.banAccountById);
-router.patch("/:id/unban", accountController.unbanAccountById);
+router.get("/", authenticateToken, accountController.getAllAccounts);
+router.get("/me", authenticateToken, accountController.getMyAccount);
+router.get("/:id", authenticateToken, accountController.getAccountById);
+router.put("/:id", authenticateToken, accountController.updateAccountById);
+router.patch("/:id/ban", authenticateToken, accountController.banAccountById);
+router.patch(
+  "/:id/unban",
+  authenticateToken,
+  accountController.unbanAccountById
+);
 module.exports = router;
 
 /**
@@ -16,9 +22,58 @@ module.exports = router;
  *   get:
  *     summary: Get all accounts
  *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of accounts
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ */
+/**
+ * @swagger
+ * /api/accounts/me:
+ *   get:
+ *     summary: Get my account (current user's account)
+ *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user's account details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 username:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 phone:
+ *                   type: string
+ *                 role:
+ *                   type: string
+ *                   enum: [driver, admin, company]
+ *                 status:
+ *                   type: string
+ *                   enum: [active, inactive]
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Account not found
  */
 /**
  * @swagger

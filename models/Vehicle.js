@@ -2,14 +2,29 @@ const mongoose = require("mongoose");
 
 const vehicleSchema = new mongoose.Schema(
   {
-    accountId: {
+    user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account",
       required: true,
     },
-    plateNumber: { type: String, unique: true, maxlength: 20, trim: true },
-    brand: { type: String, maxlength: 50, trim: true },
-    model: { type: String, maxlength: 50, trim: true },
+    company_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+    },
+    license_plate: {
+      type: String,
+      unique: true,
+      maxlength: 20,
+      trim: true,
+      required: true,
+    },
+    model: {
+      type: String,
+      maxlength: 50,
+      trim: true,
+      required: true,
+    },
     // kWh
     batteryCapacity: { type: Number },
   },

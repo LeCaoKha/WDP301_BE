@@ -119,3 +119,20 @@ exports.unbanAccountById = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// Get my account (current user's account)
+exports.getMyAccount = async (req, res) => {
+  try {
+    // Get user ID from JWT token (set by auth middleware)
+    const userId = req.user.accountId;
+
+    const account = await Account.findById(userId).select("-password");
+    if (!account) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    res.status(200).json(account);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

@@ -6,6 +6,7 @@ const { authenticateToken } = require("../middleware/auth");
 // Vehicle CRUD routes (all require authentication)
 router.post("/", authenticateToken, vehicleController.createVehicle);
 router.get("/", authenticateToken, vehicleController.getAllVehicles);
+router.get("/me", authenticateToken, vehicleController.getMyVehicles);
 router.get("/:id", authenticateToken, vehicleController.getVehicleById);
 router.put("/:id", authenticateToken, vehicleController.updateVehicleById);
 router.delete("/:id", authenticateToken, vehicleController.deleteVehicleById);
@@ -45,20 +46,113 @@ module.exports = router;
  *           schema:
  *             type: object
  *             properties:
- *               accountId:
+ *               user_id:
  *                 type: string
- *               plateNumber:
+ *                 description: ID of the user who owns the vehicle
+ *               company_id:
  *                 type: string
- *               brand:
+ *                 description: ID of the company that manages the vehicle
+ *               license_plate:
  *                 type: string
+ *                 description: Vehicle license plate number
  *               model:
  *                 type: string
+ *                 description: Vehicle model
  *               batteryCapacity:
  *                 type: number
  *                 format: double
+ *                 description: Battery capacity in kWh
  *     responses:
  *       201:
  *         description: Vehicle created
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ */
+/**
+ * @swagger
+ * /api/vehicles/me:
+ *   get:
+ *     summary: Get my vehicles (current user's vehicles)
+ *     tags: [Vehicle]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: List of current user's vehicles with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 vehicles:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       user_id:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           role:
+ *                             type: string
+ *                           status:
+ *                             type: string
+ *                       company_id:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           address:
+ *                             type: string
+ *                           contact_email:
+ *                             type: string
+ *                       license_plate:
+ *                         type: string
+ *                       model:
+ *                         type: string
+ *                       batteryCapacity:
+ *                         type: number
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     currentPage:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     totalItems:
+ *                       type: integer
+ *                     itemsPerPage:
+ *                       type: integer
  *       401:
  *         description: Access token required
  *       403:
@@ -105,17 +199,22 @@ module.exports = router;
  *           schema:
  *             type: object
  *             properties:
- *               accountId:
+ *               user_id:
  *                 type: string
- *               plateNumber:
+ *                 description: ID of the user who owns the vehicle
+ *               company_id:
  *                 type: string
- *               brand:
+ *                 description: ID of the company that manages the vehicle
+ *               license_plate:
  *                 type: string
+ *                 description: Vehicle license plate number
  *               model:
  *                 type: string
+ *                 description: Vehicle model
  *               batteryCapacity:
  *                 type: number
  *                 format: double
+ *                 description: Battery capacity in kWh
  *     responses:
  *       200:
  *         description: Updated vehicle
