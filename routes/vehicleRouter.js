@@ -30,6 +30,66 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: List of vehicles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   user_id:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                   company_id:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       address:
+ *                         type: string
+ *                       contact_email:
+ *                         type: string
+ *                   plate_number:
+ *                     type: string
+ *                   model:
+ *                     type: string
+ *                   batteryCapacity:
+ *                     type: number
+ *                   subscription_id:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       price:
+ *                         type: number
+ *                       billing_cycle:
+ *                         type: string
+ *                       limit_type:
+ *                         type: string
+ *                       limit_value:
+ *                         type: number
+ *                   createdAt:
+ *                     type: string
+ *                     format: date-time
+ *                   updatedAt:
+ *                     type: string
+ *                     format: date-time
  *       401:
  *         description: Access token required
  *       403:
@@ -52,7 +112,7 @@ module.exports = router;
  *               company_id:
  *                 type: string
  *                 description: ID of the company that manages the vehicle
- *               license_plate:
+ *               plate_number:
  *                 type: string
  *                 description: Vehicle license plate number
  *               model:
@@ -130,12 +190,27 @@ module.exports = router;
  *                             type: string
  *                           contact_email:
  *                             type: string
- *                       license_plate:
+ *                       plate_number:
  *                         type: string
  *                       model:
  *                         type: string
  *                       batteryCapacity:
  *                         type: number
+ *                       subscriptionId:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           price:
+ *                             type: number
+ *                           billing_cycle:
+ *                             type: string
+ *                           limit_type:
+ *                             type: string
+ *                           limit_value:
+ *                             type: number
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -175,6 +250,64 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Vehicle detail
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 user_id:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                 company_id:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     address:
+ *                       type: string
+ *                     contact_email:
+ *                       type: string
+ *                 plate_number:
+ *                   type: string
+ *                 model:
+ *                   type: string
+ *                 batteryCapacity:
+ *                   type: number
+ *                 subscriptionId:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     price:
+ *                       type: number
+ *                     billing_cycle:
+ *                       type: string
+ *                     limit_type:
+ *                       type: string
+ *                     limit_value:
+ *                       type: number
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
  *       401:
  *         description: Access token required
  *       403:
@@ -205,7 +338,7 @@ module.exports = router;
  *               company_id:
  *                 type: string
  *                 description: ID of the company that manages the vehicle
- *               license_plate:
+ *               plate_number:
  *                 type: string
  *                 description: Vehicle license plate number
  *               model:

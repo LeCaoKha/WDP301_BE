@@ -47,12 +47,12 @@ module.exports = router;
  *                 description: Unique username
  *                 minLength: 3
  *                 maxLength: 50
- *                 example: "john_doe"
+ *                 example: "admin"
  *               email:
  *                 type: string
  *                 format: email
  *                 description: Valid email address
- *                 example: "john.doe@example.com"
+ *                 example: "admin@gmail.com"
  *               phone:
  *                 type: string
  *                 description: Phone number (E.164 format or 9-15 digits)
@@ -61,14 +61,14 @@ module.exports = router;
  *               password:
  *                 type: string
  *                 description: Password (will be hashed)
- *                 minLength: 6
- *                 example: "password123"
+ *                 minLength: 3
+ *                 example: "123"
  *               role:
  *                 type: string
  *                 description: User role
  *                 enum: [driver, admin, company]
  *                 default: driver
- *                 example: "driver"
+ *                 example: "admin"
  *     responses:
  *       201:
  *         description: Account created successfully
@@ -127,11 +127,11 @@ module.exports = router;
  *                 type: string
  *                 format: email
  *                 description: User email address
- *                 example: "john.doe@example.com"
+ *                 example: "admin@gmail.com"
  *               password:
  *                 type: string
  *                 description: User password
- *                 example: "password123"
+ *                 example: "123"
  *     responses:
  *       200:
  *         description: Login successful
@@ -152,7 +152,7 @@ module.exports = router;
  *                   type: string
  *                   description: User role
  *                   enum: [driver, admin, company]
- *                   example: "driver"
+ *                   example: "admin"
  *       400:
  *         description: Invalid credentials
  *         content:

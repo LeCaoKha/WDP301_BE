@@ -10,9 +10,9 @@ const vehicleSchema = new mongoose.Schema(
     company_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
-      required: true,
+      required: false,
     },
-    license_plate: {
+    plate_number: {
       type: String,
       unique: true,
       maxlength: 20,
@@ -27,6 +27,11 @@ const vehicleSchema = new mongoose.Schema(
     },
     // kWh
     batteryCapacity: { type: Number },
+    subscription_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SubscriptionPlan",
+      required: false,
+    },
   },
   { versionKey: false, timestamps: true }
 );

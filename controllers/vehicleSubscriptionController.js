@@ -64,11 +64,16 @@ exports.createVehicleSubscription = async (req, res) => {
       payment_status,
     });
 
+    // Update vehicle with the subscription_id
+    await Vehicle.findByIdAndUpdate(vehicle_id, {
+      subscription_id: subscription_id,
+    });
+
     // Populate the response
     const populatedSubscription = await VehicleSubscription.findById(
       vehicleSubscription._id
     )
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -112,7 +117,7 @@ exports.getAllVehicleSubscriptions = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const vehicleSubscriptions = await VehicleSubscription.find(filter)
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -142,7 +147,7 @@ exports.getVehicleSubscriptionById = async (req, res) => {
   try {
     const { id } = req.params;
     const vehicleSubscription = await VehicleSubscription.findById(id)
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -235,7 +240,7 @@ exports.updateVehicleSubscriptionById = async (req, res) => {
       },
       { new: true, runValidators: true }
     )
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -245,6 +250,13 @@ exports.updateVehicleSubscriptionById = async (req, res) => {
       return res
         .status(404)
         .json({ message: "Vehicle subscription not found" });
+    }
+
+    // Update vehicle with the subscription_id if vehicle_id or subscription_id changed
+    if (vehicle_id || subscription_id) {
+      await Vehicle.findByIdAndUpdate(updated.vehicle_id, {
+        subscription_id: updated.subscription_id,
+      });
     }
 
     res.status(200).json(updated);
@@ -263,6 +275,12 @@ exports.deleteVehicleSubscriptionById = async (req, res) => {
         .status(404)
         .json({ message: "Vehicle subscription not found" });
     }
+
+    // Remove subscription_id from the vehicle
+    await Vehicle.findByIdAndUpdate(deleted.vehicle_id, {
+      $unset: { subscription_id: 1 },
+    });
+
     res
       .status(200)
       .json({ message: "Vehicle subscription deleted successfully" });
@@ -324,7 +342,7 @@ exports.extendSubscription = async (req, res) => {
     await subscription.extendSubscription(days);
 
     const updatedSubscription = await VehicleSubscription.findById(id)
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -361,7 +379,7 @@ exports.cancelSubscription = async (req, res) => {
     await subscription.save();
 
     const updatedSubscription = await VehicleSubscription.findById(id)
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -385,7 +403,7 @@ exports.checkVehicleSubscription = async (req, res) => {
       vehicle_id: vehicleId,
       status: { $in: ["active", "expired", "cancelled", "suspended"] },
     })
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -436,7 +454,7 @@ exports.getMyVehicleSubscriptions = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const vehicleSubscriptions = await VehicleSubscription.find(filter)
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"
@@ -486,7 +504,7 @@ exports.toggleAutoRenew = async (req, res) => {
     await subscription.save();
 
     const updatedSubscription = await VehicleSubscription.findById(id)
-      .populate("vehicle_id", "license_plate model user_id company_id")
+      .populate("vehicle_id", "plate_number model user_id company_id")
       .populate(
         "subscription_id",
         "name price billing_cycle limit_type limit_value"

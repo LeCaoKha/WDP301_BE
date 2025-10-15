@@ -19,7 +19,7 @@ const subscriptionPlanSchema = new mongoose.Schema(
       description: "Name of the subscription plan",
     },
     price: {
-      type: mongoose.Schema.Types.Decimal128,
+      type: Number,
       required: true,
       min: 0,
       description: "Price of the subscription plan",
