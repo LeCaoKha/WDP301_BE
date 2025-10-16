@@ -41,7 +41,8 @@ exports.createBooking = async (req, res) => {
     }
 
     // Validate charging point belongs to the station
-    if (chargingPoint.station_id.toString() !== station_id) {
+    // Note: ChargingPoint model uses `stationId` field
+    if (chargingPoint.stationId.toString() !== station_id) {
       return res.status(400).json({
         message: "Charging point does not belong to the specified station",
       });
