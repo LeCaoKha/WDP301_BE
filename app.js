@@ -18,6 +18,7 @@ const vehicleSubscriptionRouter = require("./routes/vehicleSubscriptionRouter");
 const bookingRouter = require("./routes/bookingRouter");
 const stationRouter = require("./routes/stationRouter");
 const chargingRouter = require("./routes/chargingRouter");
+const chargingSessionRouter = require("./routes/chargingSessionRouter");
 var app = express();
 // mongodb connection
 mongoose
@@ -46,6 +47,7 @@ app.use("/api/vehicle-subscriptions", vehicleSubscriptionRouter);
 app.use("/api/bookings", bookingRouter);
 app.use("/api/stations", stationRouter);
 app.use("/api/charging-point", chargingRouter);
+app.use("/api/charging-sessions", chargingSessionRouter);
 const swaggerDocs = require("./swagger");
 swaggerDocs(app, process.env.PORT || 5000);
 
