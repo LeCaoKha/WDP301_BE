@@ -19,6 +19,7 @@ exports.createBooking = async (req, res) => {
     // Validate user exists
     const user = await Account.findById(user_id);
     if (!user) {
+      console.log("User ID:", user_id);
       return res.status(400).json({ message: "User not found" });
     }
 
