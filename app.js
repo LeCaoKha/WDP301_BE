@@ -8,7 +8,6 @@ require("dotenv").config();
 
 var indexRouter = require("./routes/index");
 var usersRouter = require("./routes/users");
-const mongoose = require("mongoose");
 
 const accountRouter = require("./routes/accountRouter");
 const authRouter = require("./routes/authRouter");
@@ -39,11 +38,7 @@ app.use(
   })
 );
 
-// mongodb connection
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log(err));
+// Database connection is initialized in `bin/www` via `config/database.js`
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
