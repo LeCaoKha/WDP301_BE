@@ -19,6 +19,7 @@ exports.createBooking = async (req, res) => {
     // Validate user exists
     const user = await Account.findById(user_id);
     if (!user) {
+      console.log("User ID:", user_id);
       return res.status(400).json({ message: "User not found" });
     }
 
@@ -41,7 +42,8 @@ exports.createBooking = async (req, res) => {
     }
 
     // Validate charging point belongs to the station
-    if (chargingPoint.station_id.toString() !== station_id) {
+    // Note: ChargingPoint model uses `stationId` field
+    if (chargingPoint.stationId.toString() !== station_id) {
       return res.status(400).json({
         message: "Charging point does not belong to the specified station",
       });

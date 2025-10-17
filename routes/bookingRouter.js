@@ -311,6 +311,11 @@ module.exports = router;
  *         description: Access token required
  *       403:
  *         description: Invalid or expired token
+ */
+
+/**
+ * @swagger
+ * /api/bookings:
  *   post:
  *     summary: Create a booking
  *     tags: [Booking]
