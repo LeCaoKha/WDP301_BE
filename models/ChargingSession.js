@@ -24,7 +24,7 @@ const chargingSessionSchema = new mongoose.Schema(
       default: 'pending',
     },
     // ========= PIN Information =========
-    initial_battery_level: {
+    initial_battery_percentage: {
       type: Number,
       min: 0,
       max: 100,
@@ -109,19 +109,38 @@ chargingSessionSchema.methods.calculateCharges = async function () {
   if (!this.populated('chargingPoint_id')) {
     await this.populate('chargingPoint_id');
   }
-  //1. calculate the charging duration
+
+  // Tính thời lượng an toàn: kiểm tra start_time + end_time hợp lệ
   if (this.start_time && this.end_time) {
-    const durationMs = this.end_Time - this.start_time;
-    this.charging_duration_minutes = Math.floor(durationMs / (1000 * 60));
-    this.charging_duration_hours = durationMs / (1000 * 60 * 60);
+    const startMs = new Date(this.start_time).getTime();
+    const endMs = new Date(this.end_time).getTime();
+
+    if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+      const durationMs = endMs - startMs;
+      this.charging_duration_minutes = Math.max(0, Math.floor(durationMs / (1000 * 60)));
+      this.charging_duration_hours = Math.max(0, durationMs / (1000 * 60 * 60));
+    } else {
+      this.charging_duration_minutes = 0;
+      this.charging_duration_hours = 0;
+    }
+  } else {
+    // nếu chưa có start/end, đảm bảo không để NaN
+    this.charging_duration_minutes = Number(this.charging_duration_minutes) || 0;
+    this.charging_duration_hours = Number(this.charging_duration_hours) || 0;
   }
-  //2. calculate the energy delivered
-  const powerCapacity = this.chargingPoint_id?.power_capacity || 50;
-  this.energy_delivered_kwh = powerCapacity * this.charging_duration_hours;
-  //3. calculate the charging fee
-  this.charging_fee = this.energy_delivered_kwh * this.price_per_kwh;
-  //4. calculate the total amount
-  this.total_amount = this.base_fee + this.charging_fee;
+
+  // Tính năng lượng & phí, bảo vệ NaN bằng Number(...) || 0
+  let powerCapacity = Number(this.chargingPoint_id?.power_capacity) || 50;
+  // Nếu lưu dưới đơn vị W (>=1000), chuyển sang kW
+  if (powerCapacity >= 1000) {
+    powerCapacity = powerCapacity / 1000;
+  }
+  const hours = Number(this.charging_duration_hours) || 0;
+  this.energy_delivered_kwh = powerCapacity * hours;
+
+  this.charging_fee = (Number(this.price_per_kwh) || 0) * this.energy_delivered_kwh;
+  this.total_amount = (Number(this.base_fee) || 0) + this.charging_fee;
+
   return {
     charging_duration_minutes: this.charging_duration_minutes,
     charging_duration_hours: this.charging_duration_hours,

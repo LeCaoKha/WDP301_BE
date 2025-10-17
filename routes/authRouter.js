@@ -6,6 +6,10 @@ const authController = require("../controllers/authController");
 router.post("/register", authController.register);
 // Login route
 router.post("/login", authController.login);
+// Refresh route
+router.post("/refresh", authController.refresh);
+// Logout route
+router.post("/logout", authController.logout);
 module.exports = router;
 
 /**
@@ -163,6 +167,102 @@ module.exports = router;
  *                 message:
  *                   type: string
  *                   example: "Invalid email or password"
+ *       500:
+ *         description: Internal server error
+ */
+/**
+ * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     summary: Refresh the access token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: Refresh token
+ *                 example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50SWQiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJyb2xlIjoiZHJpdmVyIiwiaWF0IjoxNjQwOTk1MjAwLCJleHAiOjE2NDA5OTg4MDB9.signature"
+ *     responses:
+ *       200:
+ *         description: Refresh successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: JWT access token (expires in 1 hour)
+ *                   example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50SWQiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJyb2xlIjoiZHJpdmVyIiwiaWF0IjoxNjQwOTk1MjAwLCJleHAiOjE2NDA5OTg4MDB9.signature"
+ *                 accountId:
+ *                   type: string
+ *                   description: ID of the authenticated account
+ *                   example: "507f1f77bcf86cd799439011"
+ *                 role:
+ *                   type: string
+ *                   description: User role
+ *                   enum: [driver, admin, company]
+ *                   example: "admin"
+ *       400:
+ *         description: Invalid or expired refresh token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid or expired refresh token"
+ *       500:
+ *         description: Internal server error
+ */
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Logout from an account
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 description: User email address
+ *                 example: "admin@gmail.com"
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Logout successful"
+ *       400:
+ *         description: Invalid email
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid email"
  *       500:
  *         description: Internal server error
  */
