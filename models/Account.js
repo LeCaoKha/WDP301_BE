@@ -15,6 +15,7 @@ const accountSchema = new mongoose.Schema(
       enum: ["driver", "admin", "staff"],
       default: "driver",
     },
+    refreshToken: { type: String },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }
