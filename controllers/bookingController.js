@@ -113,12 +113,19 @@ exports.createBooking = async (req, res) => {
       status: "pending",
     });
 
-    // Populate the response
+    // Populate the response với thông tin station để lấy power_capacity
     const populatedBooking = await Booking.findById(booking._id)
       .populate("user_id", "username email phone_number")
-      .populate("station_id", "name address")
+      .populate("station_id", "name address power_capacity")
       .populate("vehicle_id", "plate_number model brand")
-      .populate("chargingPoint_id", "power_capacity type status");
+      .populate({
+        path: "chargingPoint_id",
+        select: "type status",
+        populate: {
+          path: "stationId",
+          select: "power_capacity"
+        }
+      });
 
     res.status(201).json({
       message: "Booking created successfully",

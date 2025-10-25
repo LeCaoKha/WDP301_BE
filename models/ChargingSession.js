@@ -112,7 +112,7 @@ chargingSessionSchema.methods.calculateCharges = async function () {
     throw new Error('Charging point not found');
   }
   
-  if (!vehicle || !vehicle.batteryCapacity) {
+  if (!vehicle || !vehicle.battery_capacity) {
     throw new Error('Vehicle battery capacity not configured');
   }
   
@@ -129,7 +129,9 @@ chargingSessionSchema.methods.calculateCharges = async function () {
     : `${minutes} phút`;
   
   // ============== 2. TÍNH NĂNG LƯỢNG THỰC TẾ =================
-  const power_capacity_kw = chargingPoint.power_capacity;
+  // Lấy power_capacity từ Station qua ChargingPoint
+  await chargingPoint.populate('stationId');
+  const power_capacity_kw = chargingPoint.stationId.power_capacity;
   const battery_capacity_kwh = vehicle.batteryCapacity;
   const charging_efficiency = 0.90; // Hiệu suất 90%
   

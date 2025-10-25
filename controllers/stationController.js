@@ -51,7 +51,6 @@ exports.getStationById = async (req, res) => {
     chargingPoints.forEach(cp => {
       const pointInfo = {
         _id: cp._id,
-        power_capacity: cp.power_capacity,
         status: cp.status,
         type: cp.type
       };
@@ -81,6 +80,8 @@ exports.getStationById = async (req, res) => {
         address: station.address,
         latitude: station.latitude,
         longitude: station.longitude,
+        power_capacity: station.power_capacity,
+        connector_type: station.connector_type,
         rating: station.rating,
         create_at: station.create_at
       },
@@ -141,7 +142,6 @@ exports.getChargingPointsByStation = async (req, res) => {
     chargingPoints.forEach(cp => {
       const pointInfo = {
         _id: cp._id,
-        power_capacity: cp.power_capacity,
         status: cp.status,
         type: cp.type
       };
@@ -167,6 +167,8 @@ exports.getChargingPointsByStation = async (req, res) => {
     res.status(200).json({
       stationId: id,
       station_name: station.name,
+      power_capacity: station.power_capacity,
+      connector_type: station.connector_type,
       total: chargingPoints.length,
       // Charging points cho booking online (đặt trước qua app)
       online_charging_points: {

@@ -10,8 +10,8 @@ const chargingPointSchema = new mongoose.Schema({
     required: true,
   },
   
-  // Công suất sạc tối đa (kW)
-  power_capacity: { type: Number, required: true },
+  // Công suất sạc được lấy từ Station (không lưu riêng ở ChargingPoint nữa)
+  // Sử dụng populate để lấy power_capacity từ Station khi cần
   
   // Trạng thái hoạt động của điểm sạc
   // available: Sẵn sàng để sử dụng

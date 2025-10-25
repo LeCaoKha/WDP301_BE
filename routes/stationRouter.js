@@ -47,6 +47,15 @@ module.exports = router;
  *                   connector_type:
  *                     type: string
  *                     enum: [AC, DC]
+ *                   power_capacity:
+ *                     type: number
+ *                     description: Công suất trạm (kW)
+ *                   price_per_kwh:
+ *                     type: number
+ *                     description: Giá điện (VND/kWh)
+ *                   base_fee:
+ *                     type: number
+ *                     description: Phí cơ bản (VND)
  *                   status:
  *                     type: string
  *                     enum: [online, offline, maintenance]
@@ -73,6 +82,7 @@ module.exports = router;
  *             required:
  *               - name
  *               - connector_type
+ *               - power_capacity
  *             properties:
  *               name:
  *                 type: string
@@ -95,6 +105,20 @@ module.exports = router;
  *                 enum: [AC, DC]
  *                 description: Type of connector
  *                 example: "AC"
+ *               power_capacity:
+ *                 type: number
+ *                 description: Công suất của trạm (kW) - áp dụng cho tất cả charging points
+ *                 example: 50
+ *               price_per_kwh:
+ *                 type: number
+ *                 description: Giá điện của trạm (VND/kWh)
+ *                 default: 3000
+ *                 example: 3000
+ *               base_fee:
+ *                 type: number
+ *                 description: Phí cơ bản mỗi lần sạc (VND)
+ *                 default: 10000
+ *                 example: 10000
  *               status:
  *                 type: string
  *                 enum: [online, offline, maintenance]
@@ -121,8 +145,19 @@ module.exports = router;
  *                   type: number
  *                 connector_type:
  *                   type: string
+ *                   enum: [AC, DC]
+ *                 power_capacity:
+ *                   type: number
+ *                   description: Công suất trạm (kW)
+ *                 price_per_kwh:
+ *                   type: number
+ *                   description: Giá điện (VND/kWh)
+ *                 base_fee:
+ *                   type: number
+ *                   description: Phí cơ bản (VND)
  *                 status:
  *                   type: string
+ *                   enum: [online, offline, maintenance]
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -169,6 +204,15 @@ module.exports = router;
  *                 connector_type:
  *                   type: string
  *                   enum: [AC, DC]
+ *                 power_capacity:
+ *                   type: number
+ *                   description: Công suất trạm (kW)
+ *                 price_per_kwh:
+ *                   type: number
+ *                   description: Giá điện (VND/kWh)
+ *                 base_fee:
+ *                   type: number
+ *                   description: Phí cơ bản (VND)
  *                 status:
  *                   type: string
  *                   enum: [online, offline, maintenance]
@@ -218,6 +262,15 @@ module.exports = router;
  *                 type: string
  *                 enum: [AC, DC]
  *                 description: Type of connector
+ *               power_capacity:
+ *                 type: number
+ *                 description: Công suất của trạm (kW)
+ *               price_per_kwh:
+ *                 type: number
+ *                 description: Giá điện của trạm (VND/kWh)
+ *               base_fee:
+ *                 type: number
+ *                 description: Phí cơ bản mỗi lần sạc (VND)
  *               status:
  *                 type: string
  *                 enum: [online, offline, maintenance]
@@ -242,8 +295,19 @@ module.exports = router;
  *                   type: number
  *                 connector_type:
  *                   type: string
+ *                   enum: [AC, DC]
+ *                 power_capacity:
+ *                   type: number
+ *                   description: Công suất trạm (kW)
+ *                 price_per_kwh:
+ *                   type: number
+ *                   description: Giá điện (VND/kWh)
+ *                 base_fee:
+ *                   type: number
+ *                   description: Phí cơ bản (VND)
  *                 status:
  *                   type: string
+ *                   enum: [online, offline, maintenance]
  *                 createdAt:
  *                   type: string
  *                   format: date-time

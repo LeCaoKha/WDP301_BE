@@ -4,15 +4,15 @@ const Station = require('../models/Station');
 /**
  * Tạo charging point mới
  * Phải chỉ định type là 'online' hoặc 'offline' ngay khi tạo
+ * Công suất sạc lấy từ Station, không cần truyền power_capacity nữa
  * 
  * @route POST /api/charging-point
  * @body {string} stationId - ID của trạm sạc
- * @body {number} power_capacity - Công suất sạc (kW)
  * @body {string} type - Loại điểm sạc: 'online' (cho booking) hoặc 'offline' (sử dụng trực tiếp)
  */
 exports.createChargingPoint = async (req, res) => {
   try {
-    const { stationId, power_capacity, type } = req.body;
+    const { stationId, type } = req.body;
 
     // Validate type - bắt buộc phải có và chỉ nhận 'online' hoặc 'offline'
     if (!type || !['online', 'offline'].includes(type)) {
@@ -28,20 +28,23 @@ exports.createChargingPoint = async (req, res) => {
       return res.status(404).json({ error: 'Station not found' });
     }
 
-    // Tạo charging point với type
+    // Tạo charging point với type (power_capacity lấy từ station)
     const chargingPoint = await ChargingPoint.create({
       stationId,
-      power_capacity,
       type,
       status: 'available'
     });
+
+    // Populate station để lấy power_capacity
+    await chargingPoint.populate('stationId');
 
     res.status(201).json({
       message: 'Charging point created successfully',
       chargingPoint: {
         _id: chargingPoint._id,
-        stationId: chargingPoint.stationId,
-        power_capacity: chargingPoint.power_capacity,
+        stationId: chargingPoint.stationId._id,
+        station_name: chargingPoint.stationId.name,
+        power_capacity: chargingPoint.stationId.power_capacity,
         type: chargingPoint.type,
         status: chargingPoint.status,
         create_at: chargingPoint.create_at
@@ -202,7 +205,7 @@ exports.startOfflineUsage = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const chargingPoint = await ChargingPoint.findById(id);
+    const chargingPoint = await ChargingPoint.findById(id).populate('stationId');
     if (!chargingPoint) {
       return res.status(404).json({ error: 'Charging Point not found' });
     }
@@ -234,7 +237,8 @@ exports.startOfflineUsage = async (req, res) => {
         _id: chargingPoint._id,
         type: chargingPoint.type,
         status: chargingPoint.status,
-        power_capacity: chargingPoint.power_capacity
+        power_capacity: chargingPoint.stationId.power_capacity,
+        station_name: chargingPoint.stationId.name
       }
     });
   } catch (error) {

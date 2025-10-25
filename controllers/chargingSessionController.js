@@ -42,6 +42,11 @@ exports.generateQRCode = async (req, res) => {
     // Generate QR token
     const qrToken = crypto.randomBytes(32).toString('hex');
     
+    // Lấy giá từ Station
+    const station = booking.station_id;
+    const price_per_kwh = station.price_per_kwh || 3000; // Mặc định 3000 nếu không có
+    const base_fee = station.base_fee || 10000; // Mặc định 10000 nếu không có
+    
     // Create session
     session = await ChargingSession.create({
       booking_id: booking._id,
@@ -50,8 +55,8 @@ exports.generateQRCode = async (req, res) => {
       qr_code_token: qrToken,
       status: 'pending',
       initial_battery_percentage: 0,
-      price_per_kwh: 3000,
-      base_fee: 10000,
+      price_per_kwh: price_per_kwh,
+      base_fee: base_fee,
     });
     
     const qrUrl = `${req.protocol}://${req.get('host')}/api/charging-sessions/start/${qrToken}`;
@@ -145,6 +150,10 @@ exports.startSessionByQr = async (req, res) => {
     const vehicle = session.vehicle_id;
     const chargingPoint = session.chargingPoint_id;
     
+    // Lấy power_capacity từ Station
+    await chargingPoint.populate('stationId');
+    const power_capacity_kw = chargingPoint.stationId.power_capacity;
+    
     let estimated_time_info = null;
     if (vehicle.batteryCapacity) {
       // Năng lượng cần sạc (kWh)
@@ -153,7 +162,7 @@ exports.startSessionByQr = async (req, res) => {
       
       // Thời gian ước tính (giờ) - với hiệu suất 90%
       const charging_efficiency = 0.90;
-      const estimated_hours = energy_needed_kwh / (chargingPoint.power_capacity * charging_efficiency);
+      const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
       
       // Ước tính thời gian hoàn thành
       const estimated_completion = new Date(Date.now() + estimated_hours * 3600000);
@@ -162,7 +171,7 @@ exports.startSessionByQr = async (req, res) => {
         energy_needed: energy_needed_kwh.toFixed(2) + ' kWh',
         estimated_time: estimated_hours.toFixed(2) + ' giờ',
         estimated_completion: estimated_completion.toISOString(),
-        formula: `${energy_needed_kwh.toFixed(2)} kWh ÷ (${chargingPoint.power_capacity} kW × 0.9) = ${estimated_hours.toFixed(2)} giờ`,
+        formula: `${energy_needed_kwh.toFixed(2)} kWh ÷ (${power_capacity_kw} kW × 0.9) = ${estimated_hours.toFixed(2)} giờ`,
       };
     }
     
@@ -177,7 +186,7 @@ exports.startSessionByQr = async (req, res) => {
         status: session.status,
         charging_point: {
           name: session.chargingPoint_id.name || 'N/A',
-          power_capacity: session.chargingPoint_id.power_capacity + ' kW',
+          power_capacity: power_capacity_kw + ' kW',
         },
         vehicle: {
           plate_number: session.vehicle_id.plate_number,

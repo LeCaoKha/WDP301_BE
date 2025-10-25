@@ -112,6 +112,9 @@ function buildSwaggerSpec(baseUrl) {
               latitude: { type: "number", example: 10.762622 },
               longitude: { type: "number", example: 106.660172 },
               connector_type: { type: "string", enum: ["AC", "DC"], example: "AC" },
+              power_capacity: { type: "number", example: 50, description: "Công suất của trạm (kW) - áp dụng cho tất cả charging points" },
+              price_per_kwh: { type: "number", example: 3000, description: "Giá điện của trạm (VND/kWh)" },
+              base_fee: { type: "number", example: 10000, description: "Phí cơ bản mỗi lần sạc (VND)" },
               status: { type: "string", enum: ["online", "offline", "maintenance"], example: "online" },
               createdAt: { type: "string", format: "date-time" }
             }
@@ -120,8 +123,8 @@ function buildSwaggerSpec(baseUrl) {
             type: "object",
             properties: {
               _id: { type: "string", example: "507f1f77bcf86cd799439011" },
-              stationId: { type: "string", example: "507f1f77bcf86cd799439012" },
-              power_capacity: { type: "number", example: 50 },
+              stationId: { type: "string", example: "507f1f77bcf86cd799439012", description: "ID của trạm sạc (lấy power_capacity từ station)" },
+              type: { type: "string", enum: ["online", "offline"], example: "online", description: "online: cho booking, offline: sử dụng trực tiếp" },
               status: { type: "string", enum: ["available", "in_use", "maintenance"], example: "available" },
               create_at: { type: "string", format: "date-time" }
             }
