@@ -5,6 +5,7 @@ const router = express.Router();
 router.post('/', authenticateToken, StationController.createStation);
 router.get('/', authenticateToken, StationController.getStations);
 router.get('/:id', authenticateToken, StationController.getStationById);
+router.get('/:id/charging-points', authenticateToken, StationController.getChargingPointsByStation);
 router.put('/:id', authenticateToken, StationController.updateStation);
 router.delete('/:id', authenticateToken, StationController.deleteStation);
 module.exports = router;
@@ -269,6 +270,53 @@ module.exports = router;
  *     responses:
  *       204:
  *         description: Station deleted successfully
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Station not found
+ */
+/**
+ * @swagger
+ * /api/stations/{id}/charging-points:
+ *   get:
+ *     summary: Get all charging points for a specific station
+ *     tags: [Station]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Station ID
+ *     responses:
+ *       200:
+ *         description: List of charging points for the station
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   stationId:
+ *                     type: string
+ *                   power_capacity:
+ *                     type: number
+ *                     description: Power capacity in kW
+ *                   status:
+ *                     type: string
+ *                     enum: [available, in_use, maintenance]
+ *                   create_at:
+ *                     type: string
+ *                     format: date-time
  *       400:
  *         description: Bad request
  *       401:
