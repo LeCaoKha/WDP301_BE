@@ -43,7 +43,7 @@ router.post(
   authenticateToken,
   chargingSessionController.cancelSession
 );
-
+router.patch('/:session_id/battery', chargingSessionController.updateBatteryLevel);
 module.exports = router;
 
 /**

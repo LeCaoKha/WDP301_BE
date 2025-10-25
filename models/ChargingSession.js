@@ -1,9 +1,11 @@
 const mongoose = require('mongoose');
+
 const chargingSessionSchema = new mongoose.Schema(
   {
     booking_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
+      required: true,
     },
     chargingPoint_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -11,61 +13,71 @@ const chargingSessionSchema = new mongoose.Schema(
       required: true,
     },
     vehicle_id: {
-      type: mongoose.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,
       ref: 'Vehicle',
       required: true,
     },
     start_time: {
       type: Date,
+      default: null,
+    },
+    end_time: {
+      type: Date,
+      default: null,
     },
     status: {
       type: String,
       enum: ['pending', 'in_progress', 'completed', 'cancelled'],
       default: 'pending',
     },
-    // ========= PIN Information =========
+    
+    // ============== BATTERY FIELDS (NEW) =================
     initial_battery_percentage: {
       type: Number,
       min: 0,
       max: 100,
       required: true,
     },
-    final_battery_level: {
+    current_battery_percentage: {  // ✅ THÊM FIELD NÀY
       type: Number,
       min: 0,
       max: 100,
-      default: null,
+      default: function() {
+        return this.initial_battery_percentage || 0;
+      }
     },
-    // ========= Energy calculation =========
+    target_battery_percentage: {  // ✅ THÊM FIELD NÀY
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 100,
+    },
+    
+    // Energy & Time
     energy_delivered_kwh: {
       type: Number,
       default: 0,
-      comment: 'Energy delivered in kWh',
     },
-    // ========= Charging duration =========
     charging_duration_minutes: {
       type: Number,
       default: 0,
-      comment: 'Duration of charging in minutes',
     },
     charging_duration_hours: {
       type: Number,
       default: 0,
-      comment: 'Duration of charging in hours',
     },
-
-    // Price information
+    
+    // Pricing
     base_fee: {
       type: Number,
-      default: 100000,
-      comment: 'Base fee for the charging session',
+      required: true,
+      default: 10000,
     },
     price_per_kwh: {
       type: Number,
+      required: true,
       default: 3000,
-      comment: 'Price per kWh',
     },
-    // ========= Result calculator =========
     charging_fee: {
       type: Number,
       default: 0,
@@ -74,7 +86,8 @@ const chargingSessionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    // QR CODE
+    
+    // QR Code
     qr_code_token: {
       type: String,
       unique: true,
@@ -82,73 +95,128 @@ const chargingSessionSchema = new mongoose.Schema(
     },
   },
   {
-    versionKey: false,
     timestamps: true,
   }
 );
-// Index for better query performance
-chargingSessionSchema.index({ booking_id: 1 });
-chargingSessionSchema.index({ chargingPoint_id: 1, status: 1 });
-chargingSessionSchema.index({ vehicle_id: 1 });
-chargingSessionSchema.index({ status: 1 });
-// ========= METHOD: FORMAT TIME =========
-chargingSessionSchema.methods.formatDuration = function () {
-  const totalMinutes = this.charging_duration_minutes;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
 
-  if (hours > 0) {
-    return `${hours} hours ${minutes} minutes`;
-  } else {
-    return `${minutes} minutes`;
-  }
-};
-
-// METHODS charging
+// ============== CALCULATE CHARGES METHOD =================
 chargingSessionSchema.methods.calculateCharges = async function () {
-  if (!this.populated('chargingPoint_id')) {
-    await this.populate('chargingPoint_id');
+  if (!this.end_time || !this.start_time) {
+    throw new Error('Session must have both start and end time');
   }
-
-  // Tính thời lượng an toàn: kiểm tra start_time + end_time hợp lệ
-  if (this.start_time && this.end_time) {
-    const startMs = new Date(this.start_time).getTime();
-    const endMs = new Date(this.end_time).getTime();
-
-    if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-      const durationMs = endMs - startMs;
-      this.charging_duration_minutes = Math.max(0, Math.floor(durationMs / (1000 * 60)));
-      this.charging_duration_hours = Math.max(0, durationMs / (1000 * 60 * 60));
-    } else {
-      this.charging_duration_minutes = 0;
-      this.charging_duration_hours = 0;
-    }
+  
+  const chargingPoint = await mongoose.model('ChargingPoint').findById(this.chargingPoint_id);
+  const vehicle = await mongoose.model('Vehicle').findById(this.vehicle_id);
+  
+  if (!chargingPoint) {
+    throw new Error('Charging point not found');
+  }
+  
+  if (!vehicle || !vehicle.batteryCapacity) {
+    throw new Error('Vehicle battery capacity not configured');
+  }
+  
+  // ============== 1. TÍNH THỜI GIAN SẠC =================
+  const duration_ms = this.end_time - this.start_time;
+  const charging_duration_hours = duration_ms / (1000 * 60 * 60);
+  const charging_duration_minutes = Math.floor(duration_ms / (1000 * 60));
+  
+  // Format thời gian
+  const hours = Math.floor(charging_duration_hours);
+  const minutes = Math.floor((charging_duration_hours - hours) * 60);
+  const charging_duration_formatted = hours > 0 
+    ? `${hours} giờ ${minutes} phút`
+    : `${minutes} phút`;
+  
+  // ============== 2. TÍNH NĂNG LƯỢNG THỰC TẾ =================
+  const power_capacity_kw = chargingPoint.power_capacity;
+  const battery_capacity_kwh = vehicle.batteryCapacity;
+  const charging_efficiency = 0.90; // Hiệu suất 90%
+  
+  // Initial battery energy (kWh)
+  const initial_energy_kwh = (this.initial_battery_percentage / 100) * battery_capacity_kwh;
+  
+  // Target battery energy (kWh)
+  const target_battery = this.target_battery_percentage || 100;
+  const target_energy_kwh = (target_battery / 100) * battery_capacity_kwh;
+  
+  // Năng lượng cần sạc (kWh)
+  const energy_needed_kwh = target_energy_kwh - initial_energy_kwh;
+  
+  // ✅ CÁCH 1: Nếu có final_battery_percentage (user nhập hoặc IoT)
+  let actual_energy_delivered_kwh;
+  let final_battery_used = this.current_battery_percentage || this.initial_battery_percentage;
+  
+  if (this.current_battery_percentage && 
+      this.current_battery_percentage > this.initial_battery_percentage) {
+    // Tính theo % pin thực tế
+    const battery_charged = this.current_battery_percentage - this.initial_battery_percentage;
+    actual_energy_delivered_kwh = (battery_charged / 100) * battery_capacity_kwh;
+    final_battery_used = this.current_battery_percentage;
   } else {
-    // nếu chưa có start/end, đảm bảo không để NaN
-    this.charging_duration_minutes = Number(this.charging_duration_minutes) || 0;
-    this.charging_duration_hours = Number(this.charging_duration_hours) || 0;
+    // ✅ CÁCH 2: Ước tính theo công suất × thời gian (nếu không có data)
+    const max_energy_by_time = power_capacity_kw * charging_duration_hours * charging_efficiency;
+    
+    // Lấy giá trị NHỎ HƠN giữa năng lượng cần và năng lượng theo thời gian
+    actual_energy_delivered_kwh = Math.min(energy_needed_kwh, max_energy_by_time);
+    
+    // Ước tính % pin cuối
+    const battery_gained = (actual_energy_delivered_kwh / battery_capacity_kwh) * 100;
+    final_battery_used = Math.min(100, this.initial_battery_percentage + battery_gained);
   }
-
-  // Tính năng lượng & phí, bảo vệ NaN bằng Number(...) || 0
-  let powerCapacity = Number(this.chargingPoint_id?.power_capacity) || 50;
-  // Nếu lưu dưới đơn vị W (>=1000), chuyển sang kW
-  if (powerCapacity >= 1000) {
-    powerCapacity = powerCapacity / 1000;
+  
+  // ============== 3. TÍNH PHÍ =================
+  const charging_fee = actual_energy_delivered_kwh * this.price_per_kwh;
+  const total_amount = this.base_fee + charging_fee;
+  
+  // ============== 4. LƯU VÀO DATABASE =================
+  this.energy_delivered_kwh = actual_energy_delivered_kwh;
+  this.charging_duration_minutes = charging_duration_minutes;
+  this.charging_duration_hours = Number(charging_duration_hours.toFixed(2));
+  this.charging_fee = charging_fee;
+  this.total_amount = total_amount;
+  
+  if (!this.current_battery_percentage) {
+    this.current_battery_percentage = Math.round(final_battery_used);
   }
-  const hours = Number(this.charging_duration_hours) || 0;
-  this.energy_delivered_kwh = powerCapacity * hours;
-
-  this.charging_fee = (Number(this.price_per_kwh) || 0) * this.energy_delivered_kwh;
-  this.total_amount = (Number(this.base_fee) || 0) + this.charging_fee;
-
+  
+  // ============== 5. RETURN CALCULATION =================
   return {
-    charging_duration_minutes: this.charging_duration_minutes,
-    charging_duration_hours: this.charging_duration_hours,
-    charging_duration_formatted: this.formatDuration(),
-    energy_delivered_kwh: this.energy_delivered_kwh,
+    // Time
+    charging_duration_minutes,
+    charging_duration_hours: charging_duration_hours.toFixed(2),
+    charging_duration_formatted,
+    
+    // Energy
+    power_capacity_kw,
+    battery_capacity_kwh,
+    charging_efficiency,
+    
+    // Battery
+    initial_battery_percentage: this.initial_battery_percentage,
+    final_battery_percentage: Math.round(final_battery_used),
+    battery_charged_percentage: Math.round(final_battery_used - this.initial_battery_percentage),
+    
+    // Energy Calculation
+    initial_energy_kwh: initial_energy_kwh.toFixed(2),
+    target_energy_kwh: target_energy_kwh.toFixed(2),
+    energy_needed_kwh: energy_needed_kwh.toFixed(2),
+    actual_energy_delivered_kwh: actual_energy_delivered_kwh.toFixed(2),
+    
+    // Pricing
     base_fee: this.base_fee,
-    charging_fee: this.charging_fee,
-    total_amount: this.total_amount,
+    price_per_kwh: this.price_per_kwh,
+    charging_fee: Math.round(charging_fee),
+    total_amount: Math.round(total_amount),
+    
+    // Formula explanation
+    calculation_method: this.current_battery_percentage 
+      ? 'Based on actual battery percentage'
+      : 'Estimated by power × time',
+    formula: this.current_battery_percentage
+      ? `(${Math.round(final_battery_used - this.initial_battery_percentage)}% / 100) × ${battery_capacity_kwh} kWh = ${actual_energy_delivered_kwh.toFixed(2)} kWh`
+      : `min(${energy_needed_kwh.toFixed(2)} kWh needed, ${power_capacity_kw} kW × ${charging_duration_hours.toFixed(2)}h × 0.9) = ${actual_energy_delivered_kwh.toFixed(2)} kWh`,
   };
 };
+
 module.exports = mongoose.model('ChargingSession', chargingSessionSchema);
