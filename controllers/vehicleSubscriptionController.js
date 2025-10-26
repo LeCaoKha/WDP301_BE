@@ -467,9 +467,46 @@ exports.selectOptionAfterExpire = async (req, res) => {
       });
     }
 
-    // Handle "renew" - set status to active
+    // Handle "renew" - set status to active and update start_date and end_date
     if (type === "renew") {
+      // Get subscription plan to calculate new dates
+      const subscriptionPlan = await SubscriptionPlan.findById(
+        vehicleSubscription.subscription_id
+      );
+      if (!subscriptionPlan) {
+        return res.status(404).json({
+          message: "Subscription plan not found",
+        });
+      }
+
+      // Calculate new start_date and end_date based on billing_cycle
+      const startDate = new Date();
+      let daysToAdd = 0;
+
+      switch (subscriptionPlan.billing_cycle) {
+        case "1 month":
+          daysToAdd = 30;
+          break;
+        case "3 months":
+          daysToAdd = 90;
+          break;
+        case "6 months":
+          daysToAdd = 180;
+          break;
+        case "1 year":
+          daysToAdd = 365;
+          break;
+        default:
+          daysToAdd = 30;
+      }
+
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + daysToAdd);
+
+      // Update subscription with new dates and status
       vehicleSubscription.status = "active";
+      vehicleSubscription.start_date = startDate;
+      vehicleSubscription.end_date = endDate;
       await vehicleSubscription.save();
 
       const updatedSubscription = await VehicleSubscription.findById(id)
@@ -501,9 +538,35 @@ exports.selectOptionAfterExpire = async (req, res) => {
         });
       }
 
-      // Update subscription plan and set status to active
+      // Calculate new start_date and end_date based on new plan's billing_cycle
+      const startDate = new Date();
+      let daysToAdd = 0;
+
+      switch (newSubscriptionPlan.billing_cycle) {
+        case "1 month":
+          daysToAdd = 30;
+          break;
+        case "3 months":
+          daysToAdd = 90;
+          break;
+        case "6 months":
+          daysToAdd = 180;
+          break;
+        case "1 year":
+          daysToAdd = 365;
+          break;
+        default:
+          daysToAdd = 30;
+      }
+
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + daysToAdd);
+
+      // Update subscription plan, dates, and set status to active
       vehicleSubscription.subscription_id = subscription_plan_id;
       vehicleSubscription.status = "active";
+      vehicleSubscription.start_date = startDate;
+      vehicleSubscription.end_date = endDate;
       await vehicleSubscription.save();
 
       const updatedSubscription = await VehicleSubscription.findById(id)

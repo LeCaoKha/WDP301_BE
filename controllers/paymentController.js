@@ -56,7 +56,7 @@ exports.payForSubscription = async (req, res) => {
       vnp_TxnRef: txnRef,
       vnp_OrderInfo: orderInfo,
       vnp_OrderType: ProductCode.Other,
-      vnp_ReturnUrl: `http://localhost:5000/api/payment/payForSubscriptionReturn/${txnRef}`, // txnRef dùng làm ID giao dịch
+      vnp_ReturnUrl: `http://localhost:5000/api/payment/pay-for-subscription-return/${txnRef}`, // txnRef dùng làm ID giao dịch
       vnp_Locale: VnpLocale.VN,
       vnp_CreateDate: dateFormat(new Date()),
       vnp_ExpireDate: dateFormat(tomorrow),

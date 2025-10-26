@@ -6,9 +6,9 @@ const {
 
 const router = express.Router();
 
-router.post("/payForSubscription", payForSubscription);
+router.post("/pay-for-subscription", payForSubscription);
 router.get(
-  "/payForSubscriptionReturn/:vehicleSubscriptionId",
+  "/pay-for-subscription-return/:vehicleSubscriptionId",
   payForSubscriptionReturn
 );
 
@@ -23,7 +23,7 @@ module.exports = router;
 
 /**
  * @swagger
- * /api/payment/payForSubscription:
+ * /api/payment/pay-for-subscription:
  *   post:
  *     summary: Create VNPay payment URL for subscription purchase
  *     tags: [Payment]
