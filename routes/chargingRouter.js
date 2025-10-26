@@ -48,11 +48,15 @@ module.exports = router;
  *                         type: number
  *                       connector_type:
  *                         type: string
+ *                       power_capacity:
+ *                         type: number
+ *                         description: Công suất trạm (kW)
  *                       status:
  *                         type: string
- *                   power_capacity:
- *                     type: number
- *                     description: Power capacity in kW
+ *                   type:
+ *                     type: string
+ *                     enum: [online, offline]
+ *                     description: Type of charging point
  *                   status:
  *                     type: string
  *                     enum: [available, in_use, maintenance]
@@ -72,16 +76,17 @@ module.exports = router;
  *             type: object
  *             required:
  *               - stationId
- *               - power_capacity
+ *               - type
  *             properties:
  *               stationId:
  *                 type: string
- *                 description: ID of the station this charging point belongs to
+ *                 description: ID của trạm sạc (power_capacity lấy từ station)
  *                 example: "507f1f77bcf86cd799439011"
- *               power_capacity:
- *                 type: number
- *                 description: Power capacity in kW
- *                 example: 50
+ *               type:
+ *                 type: string
+ *                 enum: [online, offline]
+ *                 description: "online: cho booking qua app, offline: sử dụng trực tiếp"
+ *                 example: "online"
  *               status:
  *                 type: string
  *                 enum: [available, in_use, maintenance]
@@ -96,17 +101,28 @@ module.exports = router;
  *             schema:
  *               type: object
  *               properties:
- *                 _id:
+ *                 message:
  *                   type: string
- *                 stationId:
- *                   type: string
- *                 power_capacity:
- *                   type: number
- *                 status:
- *                   type: string
- *                 create_at:
- *                   type: string
- *                   format: date-time
+ *                 chargingPoint:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     stationId:
+ *                       type: string
+ *                     station_name:
+ *                       type: string
+ *                     power_capacity:
+ *                       type: number
+ *                       description: Công suất từ station (kW)
+ *                     type:
+ *                       type: string
+ *                       enum: [online, offline]
+ *                     status:
+ *                       type: string
+ *                     create_at:
+ *                       type: string
+ *                       format: date-time
  *       400:
  *         description: Validation error
  */
@@ -148,10 +164,14 @@ module.exports = router;
  *                       type: number
  *                     connector_type:
  *                       type: string
+ *                     power_capacity:
+ *                       type: number
+ *                       description: Công suất trạm (kW)
  *                     status:
  *                       type: string
- *                 power_capacity:
- *                   type: number
+ *                 type:
+ *                   type: string
+ *                   enum: [online, offline]
  *                 status:
  *                   type: string
  *                   enum: [available, in_use, maintenance]
@@ -181,10 +201,11 @@ module.exports = router;
  *             properties:
  *               stationId:
  *                 type: string
- *                 description: ID of the station this charging point belongs to
- *               power_capacity:
- *                 type: number
- *                 description: Power capacity in kW
+ *                 description: ID of the station (cannot change if in_use)
+ *               type:
+ *                 type: string
+ *                 enum: [online, offline]
+ *                 description: Type of charging point (cannot change if in_use)
  *               status:
  *                 type: string
  *                 enum: [available, in_use, maintenance]

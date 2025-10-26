@@ -5,6 +5,7 @@ const router = express.Router();
 router.post('/', authenticateToken, StationController.createStation);
 router.get('/', authenticateToken, StationController.getStations);
 router.get('/:id', authenticateToken, StationController.getStationById);
+router.get('/:id/charging-points', authenticateToken, StationController.getChargingPointsByStation);
 router.put('/:id', authenticateToken, StationController.updateStation);
 router.delete('/:id', authenticateToken, StationController.deleteStation);
 module.exports = router;
@@ -46,6 +47,15 @@ module.exports = router;
  *                   connector_type:
  *                     type: string
  *                     enum: [AC, DC]
+ *                   power_capacity:
+ *                     type: number
+ *                     description: Công suất trạm (kW)
+ *                   price_per_kwh:
+ *                     type: number
+ *                     description: Giá điện (VND/kWh)
+ *                   base_fee:
+ *                     type: number
+ *                     description: Phí cơ bản (VND)
  *                   status:
  *                     type: string
  *                     enum: [online, offline, maintenance]
@@ -72,6 +82,7 @@ module.exports = router;
  *             required:
  *               - name
  *               - connector_type
+ *               - power_capacity
  *             properties:
  *               name:
  *                 type: string
@@ -94,6 +105,20 @@ module.exports = router;
  *                 enum: [AC, DC]
  *                 description: Type of connector
  *                 example: "AC"
+ *               power_capacity:
+ *                 type: number
+ *                 description: Công suất của trạm (kW) - áp dụng cho tất cả charging points
+ *                 example: 50
+ *               price_per_kwh:
+ *                 type: number
+ *                 description: Giá điện của trạm (VND/kWh)
+ *                 default: 3000
+ *                 example: 3000
+ *               base_fee:
+ *                 type: number
+ *                 description: Phí cơ bản mỗi lần sạc (VND)
+ *                 default: 10000
+ *                 example: 10000
  *               status:
  *                 type: string
  *                 enum: [online, offline, maintenance]
@@ -120,8 +145,19 @@ module.exports = router;
  *                   type: number
  *                 connector_type:
  *                   type: string
+ *                   enum: [AC, DC]
+ *                 power_capacity:
+ *                   type: number
+ *                   description: Công suất trạm (kW)
+ *                 price_per_kwh:
+ *                   type: number
+ *                   description: Giá điện (VND/kWh)
+ *                 base_fee:
+ *                   type: number
+ *                   description: Phí cơ bản (VND)
  *                 status:
  *                   type: string
+ *                   enum: [online, offline, maintenance]
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -168,6 +204,15 @@ module.exports = router;
  *                 connector_type:
  *                   type: string
  *                   enum: [AC, DC]
+ *                 power_capacity:
+ *                   type: number
+ *                   description: Công suất trạm (kW)
+ *                 price_per_kwh:
+ *                   type: number
+ *                   description: Giá điện (VND/kWh)
+ *                 base_fee:
+ *                   type: number
+ *                   description: Phí cơ bản (VND)
  *                 status:
  *                   type: string
  *                   enum: [online, offline, maintenance]
@@ -217,6 +262,15 @@ module.exports = router;
  *                 type: string
  *                 enum: [AC, DC]
  *                 description: Type of connector
+ *               power_capacity:
+ *                 type: number
+ *                 description: Công suất của trạm (kW)
+ *               price_per_kwh:
+ *                 type: number
+ *                 description: Giá điện của trạm (VND/kWh)
+ *               base_fee:
+ *                 type: number
+ *                 description: Phí cơ bản mỗi lần sạc (VND)
  *               status:
  *                 type: string
  *                 enum: [online, offline, maintenance]
@@ -241,8 +295,19 @@ module.exports = router;
  *                   type: number
  *                 connector_type:
  *                   type: string
+ *                   enum: [AC, DC]
+ *                 power_capacity:
+ *                   type: number
+ *                   description: Công suất trạm (kW)
+ *                 price_per_kwh:
+ *                   type: number
+ *                   description: Giá điện (VND/kWh)
+ *                 base_fee:
+ *                   type: number
+ *                   description: Phí cơ bản (VND)
  *                 status:
  *                   type: string
+ *                   enum: [online, offline, maintenance]
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -269,6 +334,53 @@ module.exports = router;
  *     responses:
  *       204:
  *         description: Station deleted successfully
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Station not found
+ */
+/**
+ * @swagger
+ * /api/stations/{id}/charging-points:
+ *   get:
+ *     summary: Get all charging points for a specific station
+ *     tags: [Station]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Station ID
+ *     responses:
+ *       200:
+ *         description: List of charging points for the station
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   stationId:
+ *                     type: string
+ *                   power_capacity:
+ *                     type: number
+ *                     description: Power capacity in kW
+ *                   status:
+ *                     type: string
+ *                     enum: [available, in_use, maintenance]
+ *                   create_at:
+ *                     type: string
+ *                     format: date-time
  *       400:
  *         description: Bad request
  *       401:

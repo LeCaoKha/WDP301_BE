@@ -37,8 +37,20 @@ exports.createBooking = async (req, res) => {
 
     // Validate charging point exists
     const chargingPoint = await ChargingPoint.findById(chargingPoint_id);
-    if (!chargingPoint) {
-      return res.status(400).json({ message: "Charging point not found" });
+
+    // Thêm dòng này để debug
+    console.log("Charging Point:", {
+      id: chargingPoint._id,
+      type: chargingPoint.type,
+      status: chargingPoint.status,
+    });
+
+    if (chargingPoint.type !== "online") {
+      console.log("BLOCKED: Charging point type is offline");
+      return res.status(400).json({
+        error: "Cannot book this charging point",
+        charging_point_type: chargingPoint.type,
+      });
     }
 
     // Validate charging point belongs to the station
@@ -90,6 +102,7 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    // Tạo booking
     const booking = await Booking.create({
       user_id,
       station_id,
@@ -97,18 +110,29 @@ exports.createBooking = async (req, res) => {
       chargingPoint_id,
       start_time: startTime,
       end_time: endTime,
+      status: "pending",
     });
 
-    // Populate the response
+    // Populate the response với thông tin station để lấy power_capacity
     const populatedBooking = await Booking.findById(booking._id)
-      .populate("user_id", "username email role status")
-      .populate("station_id", "name address location")
-      .populate("vehicle_id", "license_plate model user_id company_id")
-      .populate("chargingPoint_id", "name status power_rating");
+      .populate("user_id", "username email phone_number")
+      .populate("station_id", "name address power_capacity")
+      .populate("vehicle_id", "plate_number model brand")
+      .populate({
+        path: "chargingPoint_id",
+        select: "type status",
+        populate: {
+          path: "stationId",
+          select: "power_capacity"
+        }
+      });
 
-    res.status(201).json(populatedBooking);
+    res.status(201).json({
+      message: "Booking created successfully",
+      booking: populatedBooking,
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ error: error.message });
   }
 };
 
@@ -231,8 +255,20 @@ exports.updateBookingById = async (req, res) => {
     // Validate charging point exists (if provided)
     if (chargingPoint_id) {
       const chargingPoint = await ChargingPoint.findById(chargingPoint_id);
-      if (!chargingPoint) {
-        return res.status(400).json({ message: "Charging point not found" });
+
+      // Thêm dòng này để debug
+      console.log("Charging Point:", {
+        id: chargingPoint._id,
+        type: chargingPoint.type,
+        status: chargingPoint.status,
+      });
+
+      if (chargingPoint.type !== "online") {
+        console.log("BLOCKED: Charging point type is offline");
+        return res.status(400).json({
+          error: "Cannot book this charging point",
+          charging_point_type: chargingPoint.type,
+        });
       }
     }
 
