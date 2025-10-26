@@ -8,10 +8,8 @@ exports.createVehicleSubscription = async (req, res) => {
     const {
       vehicle_id,
       subscription_id,
-      start_date,
-      end_date,
-      auto_renew,
-      payment_status,
+      auto_renew = 0,
+      payment_status = 0,
     } = req.body;
 
     // Validate vehicle exists
@@ -26,10 +24,10 @@ exports.createVehicleSubscription = async (req, res) => {
       return res.status(400).json({ message: "Subscription plan not found" });
     }
 
-    // Check if vehicle already has any subscription (active, expired, cancelled, suspended)
+    // Check existing subscription
     const existingSubscription = await VehicleSubscription.findOne({
       vehicle_id,
-      status: { $in: ["active", "expired", "cancelled", "suspended"] },
+      status: { $in: ["active", "expired"] },
     });
 
     if (existingSubscription) {
@@ -45,15 +43,29 @@ exports.createVehicleSubscription = async (req, res) => {
       });
     }
 
-    // Validate dates
-    const startDate = new Date(start_date);
-    const endDate = new Date(end_date);
+    // Auto calculate start_date and end_date based on billing_cycle
+    const startDate = new Date();
+    let daysToAdd = 0;
 
-    if (startDate >= endDate) {
-      return res.status(400).json({
-        message: "End date must be after start date",
-      });
+    switch (subscriptionPlan.billing_cycle) {
+      case "1 month":
+        daysToAdd = 30;
+        break;
+      case "3 months":
+        daysToAdd = 90;
+        break;
+      case "6 months":
+        daysToAdd = 180;
+        break;
+      case "1 year":
+        daysToAdd = 365;
+        break;
+      default:
+        daysToAdd = 30;
     }
+
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + daysToAdd);
 
     const vehicleSubscription = await VehicleSubscription.create({
       vehicle_id,
@@ -64,20 +76,15 @@ exports.createVehicleSubscription = async (req, res) => {
       payment_status,
     });
 
-    // Update vehicle with the subscription_id
     await Vehicle.findByIdAndUpdate(vehicle_id, {
-      subscription_id: subscription_id,
+      vehicle_subscription_id: vehicleSubscription._id,
     });
 
-    // Populate the response
     const populatedSubscription = await VehicleSubscription.findById(
       vehicleSubscription._id
     )
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate("subscription_id", "name price billing_cycle limit_type");
 
     res.status(201).json(populatedSubscription);
   } catch (error) {
@@ -118,10 +125,7 @@ exports.getAllVehicleSubscriptions = async (req, res) => {
 
     const vehicleSubscriptions = await VehicleSubscription.find(filter)
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      )
+      .populate("subscription_id", "name price billing_cycle limit_type")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -148,10 +152,7 @@ exports.getVehicleSubscriptionById = async (req, res) => {
     const { id } = req.params;
     const vehicleSubscription = await VehicleSubscription.findById(id)
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate("subscription_id", "name price billing_cycle limit_type");
 
     if (!vehicleSubscription) {
       return res
@@ -190,7 +191,7 @@ exports.updateVehicleSubscriptionById = async (req, res) => {
       const existingSubscription = await VehicleSubscription.findOne({
         vehicle_id,
         _id: { $ne: id },
-        status: { $in: ["active", "expired", "cancelled", "suspended"] },
+        status: { $in: ["active", "expired"] },
       });
 
       if (existingSubscription) {
@@ -241,10 +242,7 @@ exports.updateVehicleSubscriptionById = async (req, res) => {
       { new: true, runValidators: true }
     )
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate("subscription_id", "name price billing_cycle limit_type");
 
     if (!updated) {
       return res
@@ -308,87 +306,10 @@ exports.getSubscriptionsByVehicleId = async (req, res) => {
     }
 
     const subscriptions = await VehicleSubscription.find(filter)
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      )
+      .populate("subscription_id", "name price billing_cycle limit_type")
       .sort({ createdAt: -1 });
 
     res.status(200).json(subscriptions);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Extend subscription
-exports.extendSubscription = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { days } = req.body;
-
-    if (!days || days <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Days must be a positive number" });
-    }
-
-    const subscription = await VehicleSubscription.findById(id);
-    if (!subscription) {
-      return res
-        .status(404)
-        .json({ message: "Vehicle subscription not found" });
-    }
-
-    await subscription.extendSubscription(days);
-
-    const updatedSubscription = await VehicleSubscription.findById(id)
-      .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
-
-    res.status(200).json({
-      message: `Subscription extended by ${days} days`,
-      subscription: updatedSubscription,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Cancel subscription
-exports.cancelSubscription = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const subscription = await VehicleSubscription.findById(id);
-
-    if (!subscription) {
-      return res
-        .status(404)
-        .json({ message: "Vehicle subscription not found" });
-    }
-
-    if (subscription.status === "cancelled") {
-      return res
-        .status(400)
-        .json({ message: "Subscription is already cancelled" });
-    }
-
-    subscription.status = "cancelled";
-    await subscription.save();
-
-    const updatedSubscription = await VehicleSubscription.findById(id)
-      .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
-
-    res.status(200).json({
-      message: "Subscription cancelled successfully",
-      subscription: updatedSubscription,
-    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -401,13 +322,10 @@ exports.checkVehicleSubscription = async (req, res) => {
 
     const subscription = await VehicleSubscription.findOne({
       vehicle_id: vehicleId,
-      status: { $in: ["active", "expired", "cancelled", "suspended"] },
+      status: { $in: ["active", "expired"] },
     })
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate("subscription_id", "name price billing_cycle limit_type");
 
     if (!subscription) {
       return res.status(200).json({
@@ -455,10 +373,7 @@ exports.getMyVehicleSubscriptions = async (req, res) => {
 
     const vehicleSubscriptions = await VehicleSubscription.find(filter)
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      )
+      .populate("subscription_id", "name price billing_cycle limit_type")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -505,15 +420,102 @@ exports.toggleAutoRenew = async (req, res) => {
 
     const updatedSubscription = await VehicleSubscription.findById(id)
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate("subscription_id", "name price billing_cycle limit_type");
 
     res.status(200).json({
       message: `Auto renew ${auto_renew ? "enabled" : "disabled"} successfully`,
       subscription: updatedSubscription,
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Select option after subscription expires
+exports.selectOptionAfterExpire = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, subscription_plan_id = null } = req.body;
+
+    // Validate type
+    const validTypes = ["no renew", "change subscription", "renew"];
+    if (!type || !validTypes.includes(type)) {
+      return res.status(400).json({
+        message: `Type must be one of: ${validTypes.join(", ")}`,
+      });
+    }
+
+    // Find the vehicle subscription
+    const vehicleSubscription = await VehicleSubscription.findById(id);
+    if (!vehicleSubscription) {
+      return res.status(404).json({
+        message: "Vehicle subscription not found",
+      });
+    }
+
+    // Handle "no renew" - remove subscription from vehicle
+    if (type === "no renew") {
+      await Vehicle.findByIdAndUpdate(vehicleSubscription.vehicle_id, {
+        $set: { vehicle_subscription_id: null },
+      });
+
+      await VehicleSubscription.findByIdAndDelete(id);
+
+      return res.status(200).json({
+        message: "Subscription removed successfully",
+        type: "no renew",
+      });
+    }
+
+    // Handle "renew" - set status to active
+    if (type === "renew") {
+      vehicleSubscription.status = "active";
+      await vehicleSubscription.save();
+
+      const updatedSubscription = await VehicleSubscription.findById(id)
+        .populate("vehicle_id", "plate_number model user_id company_id")
+        .populate("subscription_id", "name price billing_cycle limit_type");
+
+      return res.status(200).json({
+        message: "Subscription renewed successfully",
+        type: "renew",
+        subscription: updatedSubscription,
+      });
+    }
+
+    // Handle "change subscription"
+    if (type === "change subscription") {
+      if (!subscription_plan_id) {
+        return res.status(400).json({
+          message: "subscription_plan_id is required for change subscription",
+        });
+      }
+
+      // Validate new subscription plan exists
+      const newSubscriptionPlan = await SubscriptionPlan.findById(
+        subscription_plan_id
+      );
+      if (!newSubscriptionPlan) {
+        return res.status(404).json({
+          message: "New subscription plan not found",
+        });
+      }
+
+      // Update subscription plan and set status to active
+      vehicleSubscription.subscription_id = subscription_plan_id;
+      vehicleSubscription.status = "active";
+      await vehicleSubscription.save();
+
+      const updatedSubscription = await VehicleSubscription.findById(id)
+        .populate("vehicle_id", "plate_number model user_id company_id")
+        .populate("subscription_id", "name price billing_cycle limit_type");
+
+      return res.status(200).json({
+        message: "Subscription plan changed successfully",
+        type: "change subscription",
+        subscription: updatedSubscription,
+      });
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

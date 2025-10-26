@@ -27,9 +27,9 @@ const vehicleSchema = new mongoose.Schema(
     },
     // kWh
     batteryCapacity: { type: Number },
-    subscription_id: {
+    vehicle_subscription_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "SubscriptionPlan",
+      ref: "VehicleSubscription",
       required: false,
     },
   },

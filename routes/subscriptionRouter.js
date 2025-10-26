@@ -91,12 +91,10 @@ module.exports = router;
  *                     format: decimal
  *                   billing_cycle:
  *                     type: string
- *                     enum: [monthly, quarterly, yearly, one-time]
+ *                     enum: [1 month, 3 months, 6 months, 1 year]
  *                   limit_type:
  *                     type: string
  *                     enum: [vehicles, stations, charging_sessions, users, unlimited]
- *                   limit_value:
- *                     type: number
  *                   description:
  *                     type: string
  *                   is_active:
@@ -128,7 +126,6 @@ module.exports = router;
  *               - price
  *               - billing_cycle
  *               - limit_type
- *               - limit_value
  *             properties:
  *               type:
  *                 type: string
@@ -148,19 +145,14 @@ module.exports = router;
  *                 example: 29.99
  *               billing_cycle:
  *                 type: string
- *                 enum: [monthly, quarterly, yearly, one-time]
+ *                 enum: [1 month, 3 months, 6 months, 1 year]
  *                 description: Billing cycle for the subscription
- *                 example: "monthly"
+ *                 example: "1 month"
  *               limit_type:
  *                 type: string
  *                 enum: [vehicles, stations, charging_sessions, users, unlimited]
  *                 description: Type of limit applied to the subscription
  *                 example: "vehicles"
- *               limit_value:
- *                 type: number
- *                 minimum: 0
- *                 description: Value of the limit (0 for unlimited)
- *                 example: 10
  *               description:
  *                 type: string
  *                 maxLength: 1000
@@ -187,8 +179,6 @@ module.exports = router;
  *                   type: string
  *                 limit_type:
  *                   type: string
- *                 limit_value:
- *                   type: number
  *                 description:
  *                   type: string
  *                 is_active:
@@ -244,8 +234,6 @@ module.exports = router;
  *                   type: string
  *                 limit_type:
  *                   type: string
- *                 limit_value:
- *                   type: number
  *                 description:
  *                   type: string
  *                 is_active:
@@ -296,16 +284,12 @@ module.exports = router;
  *                 description: Price of the subscription plan
  *               billing_cycle:
  *                 type: string
- *                 enum: [monthly, quarterly, yearly, one-time]
+ *                 enum: [1 month, 3 months, 6 months, 1 year]
  *                 description: Billing cycle for the subscription
  *               limit_type:
  *                 type: string
  *                 enum: [vehicles, stations, charging_sessions, users, unlimited]
  *                 description: Type of limit applied to the subscription
- *               limit_value:
- *                 type: number
- *                 minimum: 0
- *                 description: Value of the limit (0 for unlimited)
  *               description:
  *                 type: string
  *                 maxLength: 1000
@@ -334,8 +318,6 @@ module.exports = router;
  *                   type: string
  *                 limit_type:
  *                   type: string
- *                 limit_value:
- *                   type: number
  *                 description:
  *                   type: string
  *                 is_active:
@@ -426,8 +408,6 @@ module.exports = router;
  *                       type: string
  *                     limit_type:
  *                       type: string
- *                     limit_value:
- *                       type: number
  *                     description:
  *                       type: string
  *                     is_active:

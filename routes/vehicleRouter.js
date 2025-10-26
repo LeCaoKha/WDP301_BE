@@ -82,8 +82,6 @@ module.exports = router;
  *                         type: string
  *                       limit_type:
  *                         type: string
- *                       limit_value:
- *                         type: number
  *                   createdAt:
  *                     type: string
  *                     format: date-time
@@ -196,7 +194,7 @@ module.exports = router;
  *                         type: string
  *                       batteryCapacity:
  *                         type: number
- *                       subscriptionId:
+ *                       vehicle_subscription_id:
  *                         type: object
  *                         properties:
  *                           _id:
@@ -209,8 +207,6 @@ module.exports = router;
  *                             type: string
  *                           limit_type:
  *                             type: string
- *                           limit_value:
- *                             type: number
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -300,8 +296,6 @@ module.exports = router;
  *                       type: string
  *                     limit_type:
  *                       type: string
- *                     limit_value:
- *                       type: number
  *                 createdAt:
  *                   type: string
  *                   format: date-time

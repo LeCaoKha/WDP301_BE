@@ -7,15 +7,27 @@ const {
 } = require("vnpay");
 const crypto = require("crypto");
 const Payment = require("../models/Payment");
-const vehicleSubscription = require("../models/VehicleSubscription");
+const Vehicle = require("../models/Vehicle");
+const VehicleSubscription = require("../models/VehicleSubscription");
+const SubscriptionPlan = require("../models/SubscriptionPlan");
+
 const url = require("url");
 const querystring = require("querystring");
+const { findById } = require("../models/Vehicle");
 const tmnCode = "MTZVDR2T";
 const secureSecret = "C70JGHY1X7BQ2B98HO2S7X9BNLQ4JGDX";
 
-exports.getPaymentUrl = async (req, res) => {
+exports.payForSubscription = async (req, res) => {
   try {
-    const { amount, vehicleSubscriptionId, userId } = req.body;
+    const {
+      amount,
+      vehicle_id,
+      subscription_id,
+      userId,
+      auto_renew = 0,
+      payment_status = 0,
+    } = req.body;
+
     const vnpay = new VNPay({
       tmnCode,
       secureSecret,
@@ -27,47 +39,45 @@ exports.getPaymentUrl = async (req, res) => {
 
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
+    const txnRef = Date.now().toString();
 
-    const txnRef = Date.now().toString(); // Tạo mã giao dịch duy nhất
+    // 👇 Gửi toàn bộ dữ liệu cần thiết trong vnp_OrderInfo (không cần start_date và end_date)
+    const orderInfo = new URLSearchParams({
+      vehicle_id,
+      subscription_id,
+      auto_renew,
+      payment_status,
+      userId,
+    }).toString();
 
     const vnpayResponse = await vnpay.buildPaymentUrl({
-      vnp_Amount: amount, // 1000 VNĐ = 100000
+      vnp_Amount: amount,
       vnp_IpAddr: req.ip || "127.0.0.1",
       vnp_TxnRef: txnRef,
-      vnp_OrderInfo: `subcriptionId=${vehicleSubscriptionId}&userId=${userId}`,
+      vnp_OrderInfo: orderInfo,
       vnp_OrderType: ProductCode.Other,
-      vnp_ReturnUrl: `http://localhost:5000/api/payment/return/${vehicleSubscriptionId}`,
+      vnp_ReturnUrl: `http://localhost:5000/api/payment/payForSubscriptionReturn/${txnRef}`, // txnRef dùng làm ID giao dịch
       vnp_Locale: VnpLocale.VN,
       vnp_CreateDate: dateFormat(new Date()),
       vnp_ExpireDate: dateFormat(tomorrow),
     });
 
-    // Gợi ý: lưu txnRef vào DB để phục vụ cho refund sau này
-    res.status(201).json(vnpayResponse);
+    return res.status(201).json(vnpayResponse);
   } catch (error) {
-    console.error("Error in getPaymentUrl:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("Error in payForSubscription:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-exports.vnpayReturn = async (req, res) => {
+exports.payForSubscriptionReturn = async (req, res) => {
   try {
-    const vehicleSubscriptionId = req.params.vehicleSubscriptionId;
-    // Lấy raw query string (KHÔNG decode)
+    const txnRef = req.params.vehicleSubscriptionId; // txnRef truyền ở URL
+
     const rawUrl = req.originalUrl || req.url;
     const parsedUrl = url.parse(rawUrl);
     const rawQuery = parsedUrl.query || "";
 
-    console.log("vehicleSubId: ", vehicleSubscriptionId);
-    console.log("rawUrl: ", rawUrl);
-    console.log("parsedUrl: ", parsedUrl);
-    console.log("rawQuery: ", rawQuery);
-
-    if (!rawQuery) {
-      console.warn("No raw query string found on return URL");
-    }
-
-    // Parse thành object nhưng KHÔNG decode (giữ nguyên encoding từ VNPay)
+    // Parse query giữ nguyên encoding
     const queryParams = rawQuery
       .split("&")
       .filter((p) => p && p.includes("="))
@@ -79,22 +89,7 @@ exports.vnpayReturn = async (req, res) => {
         return acc;
       }, {});
 
-    // Nếu vnp_OrderInfo tồn tại -> decode và parse chi tiết để lấy userId
-    let userId;
-    if (queryParams.vnp_OrderInfo) {
-      try {
-        const decodedOrderInfo = decodeURIComponent(queryParams.vnp_OrderInfo);
-        const parsedInfo = Object.fromEntries(
-          new URLSearchParams(decodedOrderInfo)
-        );
-        userId = parsedInfo.userId;
-      } catch (e) {
-        console.warn("Failed to decode/parse vnp_OrderInfo:", e);
-      }
-    }
-
     const secureHash = queryParams["vnp_SecureHash"];
-    // loại bỏ các trường không tham gia tạo chữ ký
     delete queryParams["vnp_SecureHash"];
     delete queryParams["vnp_SecureHashType"];
 
@@ -108,20 +103,32 @@ exports.vnpayReturn = async (req, res) => {
       .update(signData)
       .digest("hex");
 
-    // So sánh hash không phân biệt hoa thường để tránh mismatch do case
+    // ✅ Kiểm tra chữ ký hợp lệ và thanh toán thành công
     if (
       computedHash.toLowerCase() === String(secureHash || "").toLowerCase() &&
       queryParams.vnp_ResponseCode === "00"
     ) {
+      // Giải mã vnp_OrderInfo để lấy dữ liệu gốc
+      const decodedOrderInfo = decodeURIComponent(queryParams.vnp_OrderInfo);
+      const parsedInfo = Object.fromEntries(
+        new URLSearchParams(decodedOrderInfo)
+      );
+
+      const {
+        vehicle_id,
+        subscription_id,
+        auto_renew,
+        payment_status,
+        userId,
+      } = parsedInfo;
+
+      // ✅ Tạo bản ghi thanh toán
       const newPayment = new Payment({
         madeBy: userId,
-        type: "subcription",
-        vehicleSubscriptionId: vehicleSubscriptionId,
+        type: "subscription", // giữ đúng enum của bạn
         vnp_TxnRef: queryParams.vnp_TxnRef,
         vnp_Amount: Number(queryParams.vnp_Amount) / 100,
-        vnp_OrderInfo: queryParams.vnp_OrderInfo
-          ? decodeURIComponent(queryParams.vnp_OrderInfo)
-          : undefined,
+        vnp_OrderInfo: decodedOrderInfo,
         vnp_TransactionNo: queryParams.vnp_TransactionNo,
         vnp_BankCode: queryParams.vnp_BankCode,
         vnp_CardType: queryParams.vnp_CardType,
@@ -132,33 +139,65 @@ exports.vnpayReturn = async (req, res) => {
       });
       await newPayment.save();
 
-      const updatedApp = await vehicleSubscription.findByIdAndUpdate(
-        vehicleSubscriptionId,
-        { payment_status: "paid" },
-        { new: true }
-      );
-
-      if (!updatedApp) {
-        console.warn("⚠️ Không tìm thấy đơn để cập nhật");
-      } else {
-        console.log("✅ Đã cập nhật đơn thành payment_completed");
+      // ✅ Lấy thông tin subscription plan để tính billing cycle
+      const subscriptionPlan = await SubscriptionPlan.findById(subscription_id);
+      if (!subscriptionPlan) {
+        console.error("Subscription plan not found");
+        return res.redirect(
+          `http://localhost:5173/payment-failed?txnRef=${txnRef}&error=plan_not_found`
+        );
       }
 
+      // ✅ Tự động tính start_date và end_date dựa trên billing_cycle
+      const startDate = new Date();
+      let daysToAdd = 0;
+
+      switch (subscriptionPlan.billing_cycle) {
+        case "1 month":
+          daysToAdd = 30;
+          break;
+        case "3 months":
+          daysToAdd = 90;
+          break;
+        case "6 months":
+          daysToAdd = 180;
+          break;
+        case "1 year":
+          daysToAdd = 365;
+          break;
+        default:
+          daysToAdd = 30;
+      }
+
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + daysToAdd);
+
+      const vehicleSubscription = await VehicleSubscription.create({
+        vehicle_id,
+        subscription_id,
+        start_date: startDate,
+        end_date: endDate,
+        auto_renew,
+        payment_status: "paid",
+      });
+
+      await Vehicle.findByIdAndUpdate(vehicle_id, {
+        vehicle_subscription_id: vehicleSubscription._id,
+      });
+
+      console.log(
+        "✅ Đã tạo VehicleSubscription mới sau thanh toán thành công"
+      );
+
       return res.redirect(
-        `http://localhost:5173/vnpay/return?vehicleSubcriptionId=${vehicleSubscriptionId}`
+        `http://localhost:5173/vnpay/return?status=success&vehicleSubscriptionId=${vehicleSubscription._id}`
       );
     }
 
-    // debug khi hash mismatch
-    console.warn("VNPay signature mismatch or non-success response", {
-      computedHash,
-      receivedHash: secureHash,
-      responseCode: queryParams.vnp_ResponseCode,
-      signData,
-    });
-
+    // ❌ Hash sai hoặc không thành công
+    console.warn("VNPay signature mismatch or failed payment");
     return res.redirect(
-      `http://localhost:5173/payment-failed?applicationId=${vehicleSubscriptionId}`
+      `http://localhost:5173/payment-failed?txnRef=${txnRef}`
     );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay:", error);

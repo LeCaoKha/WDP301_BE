@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const vehicleSubscriptionController = require("../controllers/vehicleSubscriptionController");
 const { authenticateToken } = require("../middleware/auth");
+const {
+  checkExpiredSubscriptionsMiddleware,
+} = require("../utils/subscriptionScheduler");
 
 // Vehicle Subscription CRUD routes (all require authentication)
 router.post(
@@ -12,11 +15,13 @@ router.post(
 router.get(
   "/",
   authenticateToken,
+  checkExpiredSubscriptionsMiddleware,
   vehicleSubscriptionController.getAllVehicleSubscriptions
 );
 router.get(
   "/me",
   authenticateToken,
+  checkExpiredSubscriptionsMiddleware,
   vehicleSubscriptionController.getMyVehicleSubscriptions
 );
 router.get(
@@ -39,27 +44,24 @@ router.delete(
 router.get(
   "/vehicle/:vehicleId",
   authenticateToken,
+  checkExpiredSubscriptionsMiddleware,
   vehicleSubscriptionController.getSubscriptionsByVehicleId
 );
 router.get(
   "/check/:vehicleId",
   authenticateToken,
+  checkExpiredSubscriptionsMiddleware,
   vehicleSubscriptionController.checkVehicleSubscription
-);
-router.patch(
-  "/:id/extend",
-  authenticateToken,
-  vehicleSubscriptionController.extendSubscription
-);
-router.patch(
-  "/:id/cancel",
-  authenticateToken,
-  vehicleSubscriptionController.cancelSubscription
 );
 router.patch(
   "/:id/auto-renew",
   authenticateToken,
   vehicleSubscriptionController.toggleAutoRenew
+);
+router.patch(
+  "/:id/select-option-after-expire",
+  authenticateToken,
+  vehicleSubscriptionController.selectOptionAfterExpire
 );
 
 module.exports = router;
@@ -93,7 +95,7 @@ module.exports = router;
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, expired, cancelled, suspended]
+ *           enum: [active, expired]
  *         description: Filter by subscription status
  *       - in: query
  *         name: payment_status
@@ -159,8 +161,6 @@ module.exports = router;
  *                                 type: string
  *                               limit_type:
  *                                 type: string
- *                               limit_value:
- *                                 type: number
  *                       subscription_id:
  *                         type: object
  *                         properties:
@@ -174,8 +174,6 @@ module.exports = router;
  *                             type: string
  *                           limit_type:
  *                             type: string
- *                           limit_value:
- *                             type: number
  *                       start_date:
  *                         type: string
  *                         format: date-time
@@ -184,7 +182,7 @@ module.exports = router;
  *                         format: date-time
  *                       status:
  *                         type: string
- *                         enum: [active, expired, cancelled, suspended]
+ *                         enum: [active, expired]
  *                       auto_renew:
  *                         type: boolean
  *                       payment_status:
@@ -229,8 +227,6 @@ module.exports = router;
  *             required:
  *               - vehicle_id
  *               - subscription_id
- *               - start_date
- *               - end_date
  *             properties:
  *               vehicle_id:
  *                 type: string
@@ -238,18 +234,8 @@ module.exports = router;
  *                 example: "507f1f77bcf86cd799439011"
  *               subscription_id:
  *                 type: string
- *                 description: ID of the subscription plan
+ *                 description: ID of the subscription plan (start_date and end_date will be auto-calculated based on billing_cycle)
  *                 example: "507f1f77bcf86cd799439012"
- *               start_date:
- *                 type: string
- *                 format: date-time
- *                 description: Start date of the subscription
- *                 example: "2024-01-01T00:00:00.000Z"
- *               end_date:
- *                 type: string
- *                 format: date-time
- *                 description: End date of the subscription
- *                 example: "2024-02-01T00:00:00.000Z"
  *               auto_renew:
  *                 type: boolean
  *                 description: Whether the subscription should auto-renew
@@ -297,8 +283,6 @@ module.exports = router;
  *                       type: string
  *                     limit_type:
  *                       type: string
- *                     limit_value:
- *                       type: number
  *                 start_date:
  *                   type: string
  *                   format: date-time
@@ -307,7 +291,7 @@ module.exports = router;
  *                   format: date-time
  *                 status:
  *                   type: string
- *                   enum: [active, expired, cancelled, suspended]
+ *                   enum: [active, expired]
  *                 auto_renew:
  *                   type: boolean
  *                 payment_status:
@@ -341,7 +325,7 @@ module.exports = router;
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, expired, cancelled, suspended]
+ *           enum: [active, expired]
  *         description: Filter by subscription status
  *       - in: query
  *         name: page
@@ -396,8 +380,6 @@ module.exports = router;
  *                                 type: string
  *                               limit_type:
  *                                 type: string
- *                               limit_value:
- *                                 type: number
  *                       subscription_id:
  *                         type: object
  *                         properties:
@@ -411,8 +393,6 @@ module.exports = router;
  *                             type: string
  *                           limit_type:
  *                             type: string
- *                           limit_value:
- *                             type: number
  *                       start_date:
  *                         type: string
  *                         format: date-time
@@ -421,7 +401,7 @@ module.exports = router;
  *                         format: date-time
  *                       status:
  *                         type: string
- *                         enum: [active, expired, cancelled, suspended]
+ *                         enum: [active, expired]
  *                       auto_renew:
  *                         type: boolean
  *                       payment_status:
@@ -500,8 +480,6 @@ module.exports = router;
  *                       type: string
  *                     limit_type:
  *                       type: string
- *                     limit_value:
- *                       type: number
  *                 start_date:
  *                   type: string
  *                   format: date-time
@@ -510,7 +488,7 @@ module.exports = router;
  *                   format: date-time
  *                 status:
  *                   type: string
- *                   enum: [active, expired, cancelled, suspended]
+ *                   enum: [active, expired]
  *                 auto_renew:
  *                   type: boolean
  *                 payment_status:
@@ -563,7 +541,7 @@ module.exports = router;
  *                 description: End date of the subscription
  *               status:
  *                 type: string
- *                 enum: [active, expired, cancelled, suspended]
+ *                 enum: [active, expired]
  *                 description: Status of the subscription
  *               auto_renew:
  *                 type: boolean
@@ -614,8 +592,6 @@ module.exports = router;
  *                           type: string
  *                         limit_type:
  *                           type: string
- *                         limit_value:
- *                           type: number
  *                     start_date:
  *                       type: string
  *                       format: date-time
@@ -624,7 +600,7 @@ module.exports = router;
  *                       format: date-time
  *                     status:
  *                       type: string
- *                       enum: [active, expired, cancelled, suspended]
+ *                       enum: [active, expired]
  *                     auto_renew:
  *                       type: boolean
  *                     payment_status:
@@ -701,7 +677,7 @@ module.exports = router;
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, expired, cancelled, suspended]
+ *           enum: [active, expired]
  *         description: Filter by subscription status
  *       - in: query
  *         name: is_active
@@ -749,8 +725,6 @@ module.exports = router;
  *                                 type: string
  *                               limit_type:
  *                                 type: string
- *                               limit_value:
- *                                 type: number
  *                       subscription_id:
  *                         type: object
  *                         properties:
@@ -764,8 +738,6 @@ module.exports = router;
  *                             type: string
  *                           limit_type:
  *                             type: string
- *                           limit_value:
- *                             type: number
  *                       start_date:
  *                         type: string
  *                         format: date-time
@@ -774,7 +746,7 @@ module.exports = router;
  *                         format: date-time
  *                       status:
  *                         type: string
- *                         enum: [active, expired, cancelled, suspended]
+ *                         enum: [active, expired]
  *                       auto_renew:
  *                         type: boolean
  *                       payment_status:
@@ -855,212 +827,6 @@ module.exports = router;
  */
 /**
  * @swagger
- * /api/vehicle-subscriptions/{id}/extend:
- *   patch:
- *     summary: Extend subscription by number of days
- *     tags: [VehicleSubscription]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Vehicle subscription ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - days
- *             properties:
- *               days:
- *                 type: integer
- *                 minimum: 1
- *                 description: Number of days to extend the subscription
- *                 example: 30
- *     responses:
- *       200:
- *         description: Subscription extended successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Subscription extended by 30 days"
- *                 subscription:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                     vehicle_id:
- *                       type: object
- *                       properties:
- *                         _id:
- *                           type: string
- *                         plate_number:
- *                           type: string
- *                         model:
- *                           type: string
- *                         user_id:
- *                           type: string
- *                         company_id:
- *                           type: string
- *                     subscription_id:
- *                       type: object
- *                       properties:
- *                         _id:
- *                           type: string
- *                         name:
- *                           type: string
- *                         price:
- *                           type: number
- *                         billing_cycle:
- *                           type: string
- *                         limit_type:
- *                           type: string
- *                         limit_value:
- *                           type: number
- *                     start_date:
- *                       type: string
- *                       format: date-time
- *                     end_date:
- *                       type: string
- *                       format: date-time
- *                     status:
- *                       type: string
- *                       enum: [active, expired, cancelled, suspended]
- *                     auto_renew:
- *                       type: boolean
- *                     payment_status:
- *                       type: string
- *                       enum: [paid, pending, failed, refunded]
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                     updatedAt:
- *                       type: string
- *                       format: date-time
- *       400:
- *         description: Invalid days value
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Days must be a positive integer"
- *       401:
- *         description: Access token required
- *       403:
- *         description: Invalid or expired token
- *       404:
- *         description: Vehicle subscription not found
- */
-/**
- * @swagger
- * /api/vehicle-subscriptions/{id}/cancel:
- *   patch:
- *     summary: Cancel subscription
- *     tags: [VehicleSubscription]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Vehicle subscription ID
- *     responses:
- *       200:
- *         description: Subscription cancelled successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Subscription cancelled successfully"
- *                 subscription:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                     vehicle_id:
- *                       type: object
- *                       properties:
- *                         _id:
- *                           type: string
- *                         plate_number:
- *                           type: string
- *                         model:
- *                           type: string
- *                         user_id:
- *                           type: string
- *                         company_id:
- *                           type: string
- *                     subscription_id:
- *                       type: object
- *                       properties:
- *                         _id:
- *                           type: string
- *                         name:
- *                           type: string
- *                         price:
- *                           type: number
- *                         billing_cycle:
- *                           type: string
- *                         limit_type:
- *                           type: string
- *                         limit_value:
- *                           type: number
- *                     start_date:
- *                       type: string
- *                       format: date-time
- *                     end_date:
- *                       type: string
- *                       format: date-time
- *                     status:
- *                       type: string
- *                       enum: [active, expired, cancelled, suspended]
- *                     auto_renew:
- *                       type: boolean
- *                     payment_status:
- *                       type: string
- *                       enum: [paid, pending, failed, refunded]
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                     updatedAt:
- *                       type: string
- *                       format: date-time
- *       400:
- *         description: Subscription already cancelled
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Subscription is already cancelled"
- *       401:
- *         description: Access token required
- *       403:
- *         description: Invalid or expired token
- *       404:
- *         description: Vehicle subscription not found
- */
-/**
- * @swagger
  * /api/vehicle-subscriptions/{id}/auto-renew:
  *   patch:
  *     summary: Toggle auto renew for subscription
@@ -1129,8 +895,6 @@ module.exports = router;
  *                           type: string
  *                         limit_type:
  *                           type: string
- *                         limit_value:
- *                           type: number
  *                     start_date:
  *                       type: string
  *                       format: date-time
@@ -1139,7 +903,7 @@ module.exports = router;
  *                       format: date-time
  *                     status:
  *                       type: string
- *                       enum: [active, expired, cancelled, suspended]
+ *                       enum: [active, expired]
  *                     auto_renew:
  *                       type: boolean
  *                     payment_status:
@@ -1167,4 +931,95 @@ module.exports = router;
  *         description: Invalid or expired token
  *       404:
  *         description: Vehicle subscription not found
+ */
+/**
+ * @swagger
+ * /api/vehicle-subscriptions/{id}/select-option-after-expire:
+ *   patch:
+ *     summary: Select option after subscription expires
+ *     tags: [VehicleSubscription]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vehicle subscription ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [no renew, change subscription, renew]
+ *                 description: Action to take after subscription expires
+ *                 example: "renew"
+ *               subscription_plan_id:
+ *                 type: string
+ *                 description: New subscription plan ID (required only for "change subscription" type)
+ *                 example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       200:
+ *         description: Operation completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Subscription removed successfully"
+ *                     type:
+ *                       type: string
+ *                       example: "no renew"
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Subscription renewed successfully"
+ *                     type:
+ *                       type: string
+ *                       example: "renew"
+ *                     subscription:
+ *                       type: object
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Subscription plan changed successfully"
+ *                     type:
+ *                       type: string
+ *                       example: "change subscription"
+ *                     subscription:
+ *                       type: object
+ *       400:
+ *         description: Invalid request or validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   examples:
+ *                     invalid_type:
+ *                       value: "Type must be one of: no renew, change subscription, renew"
+ *                     missing_plan_id:
+ *                       value: "subscription_plan_id is required for change subscription"
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       404:
+ *         description: Vehicle subscription or subscription plan not found
+ *       500:
+ *         description: Internal server error
  */

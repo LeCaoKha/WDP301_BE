@@ -27,7 +27,7 @@ const subscriptionPlanSchema = new mongoose.Schema(
     billing_cycle: {
       type: String,
       required: true,
-      enum: ["monthly", "quarterly", "yearly", "one-time"],
+      enum: ["1 month", "3 months", "6 months", "1 year"],
       description: "Billing cycle for the subscription",
     },
     limit_type: {
@@ -35,12 +35,6 @@ const subscriptionPlanSchema = new mongoose.Schema(
       required: true,
       enum: ["vehicles", "stations", "charging_sessions", "users", "unlimited"],
       description: "Type of limit applied to the subscription",
-    },
-    limit_value: {
-      type: Number,
-      required: true,
-      min: 0,
-      description: "Value of the limit (0 for unlimited)",
     },
     description: {
       type: String,

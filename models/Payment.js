@@ -8,7 +8,7 @@ const paymentSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["subcription", "charging"],
+    enum: ["subscription", "charging"],
   },
   vehicleSubscriptionIdId: String,
   vnp_TxnRef: String,
