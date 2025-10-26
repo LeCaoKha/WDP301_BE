@@ -27,11 +27,10 @@ const vehicleSubscriptionSchema = new mongoose.Schema(
     status: {
       type: String,
       required: true,
-      enum: ["active", "expired", "cancelled", "suspended"],
+      enum: ["active", "expired"],
       default: "active",
       description: "Status of the vehicle subscription",
     },
-    // Additional fields for better management
     auto_renew: {
       type: Boolean,
       default: false,
@@ -55,8 +54,6 @@ vehicleSubscriptionSchema.index({ vehicle_id: 1, status: 1 });
 vehicleSubscriptionSchema.index({ subscription_id: 1 });
 vehicleSubscriptionSchema.index({ start_date: 1, end_date: 1 });
 vehicleSubscriptionSchema.index({ status: 1 });
-
-// Compound index for active subscriptions
 vehicleSubscriptionSchema.index({
   vehicle_id: 1,
   status: 1,
@@ -76,14 +73,6 @@ vehicleSubscriptionSchema.virtual("is_currently_active").get(function () {
 vehicleSubscriptionSchema.methods.isExpired = function () {
   const now = new Date();
   return this.end_date < now;
-};
-
-// Method to extend subscription
-vehicleSubscriptionSchema.methods.extendSubscription = function (days) {
-  this.end_date = new Date(
-    this.end_date.getTime() + days * 24 * 60 * 60 * 1000
-  );
-  return this.save();
 };
 
 module.exports = mongoose.model(

@@ -3,15 +3,8 @@ const SubscriptionPlan = require("../models/SubscriptionPlan");
 // Create Subscription Plan
 exports.createSubscriptionPlan = async (req, res) => {
   try {
-    const {
-      type,
-      name,
-      price,
-      billing_cycle,
-      limit_type,
-      limit_value,
-      description,
-    } = req.body;
+    const { type, name, price, billing_cycle, limit_type, description } =
+      req.body;
 
     // Check if plan with same name already exists
     const existingPlan = await SubscriptionPlan.findOne({ name });
@@ -27,7 +20,6 @@ exports.createSubscriptionPlan = async (req, res) => {
       price,
       billing_cycle,
       limit_type,
-      limit_value,
       description,
     });
     res.status(201).json(subscriptionPlan);
@@ -87,7 +79,6 @@ exports.updateSubscriptionPlanById = async (req, res) => {
       price,
       billing_cycle,
       limit_type,
-      limit_value,
       description,
       is_active,
     } = req.body;
@@ -113,7 +104,6 @@ exports.updateSubscriptionPlanById = async (req, res) => {
         price,
         billing_cycle,
         limit_type,
-        limit_value,
         description,
         is_active,
       },

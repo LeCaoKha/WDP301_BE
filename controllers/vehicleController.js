@@ -1,7 +1,7 @@
 const Vehicle = require("../models/Vehicle");
 const Account = require("../models/Account");
 const Company = require("../models/Company");
-const SubscriptionPlan = require("../models/SubscriptionPlan");
+const VehicleSubscription = require("../models/VehicleSubscription");
 
 // Create Vehicle
 exports.createVehicle = async (req, res) => {
@@ -38,7 +38,7 @@ exports.createVehicle = async (req, res) => {
       plate_number,
       model,
       batteryCapacity,
-      subscription_id: null,
+      vehicle_subscription_id: null,
     });
 
     // Populate the response
@@ -46,8 +46,8 @@ exports.createVehicle = async (req, res) => {
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
       .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
+        "vehicle_subscription_id",
+        "name price billing_cycle limit_type"
       );
 
     res.status(201).json(populatedVehicle);
@@ -62,10 +62,15 @@ exports.getAllVehicles = async (req, res) => {
     const vehicles = await Vehicle.find()
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate({
+        path: "vehicle_subscription_id",
+        select:
+          "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
+        populate: {
+          path: "subscription_id",
+          select: "name price billing_cycle limit_type",
+        },
+      });
     res.status(200).json(vehicles);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -79,10 +84,15 @@ exports.getVehicleById = async (req, res) => {
     const vehicle = await Vehicle.findById(id)
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
+      .populate({
+        path: "vehicle_subscription_id",
+        select:
+          "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
+        populate: {
+          path: "subscription_id",
+          select: "name price billing_cycle limit_type",
+        },
+      });
     if (!vehicle) {
       return res.status(404).json({ message: "Vehicle not found" });
     }
@@ -99,44 +109,46 @@ exports.updateVehicleById = async (req, res) => {
     const { user_id, company_id, plate_number, model, batteryCapacity } =
       req.body;
 
-    // Check if user_id exists (if provided)
-    if (user_id) {
-      const user = await Account.findById(user_id);
-      if (!user) {
-        return res.status(400).json({ message: "User not found" });
-      }
+    // Check if vehicle exists
+    const existingVehicle = await Vehicle.findById(id);
+    if (!existingVehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
     }
 
-    // Check if company_id exists (if provided)
-    if (company_id) {
+    // Check if user_id exists
+    const user = await Account.findById(user_id);
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
+
+    // Check if company_id exists (only if provided and not empty)
+    if (company_id && company_id.trim() !== "") {
       const company = await Company.findById(company_id);
       if (!company) {
         return res.status(400).json({ message: "Company not found" });
       }
     }
 
-    if (plate_number) {
-      // Validate plate_number
-      if (plate_number.trim() === "") {
-        return res
-          .status(400)
-          .json({ message: "Plate number cannot be empty" });
-      }
-
-      const conflict = await Vehicle.findOne({
-        _id: { $ne: id },
-        plate_number,
-      });
-      if (conflict) {
-        return res.status(400).json({ message: "Plate number already in use" });
-      }
+    // Validate plate_number
+    if (!plate_number || plate_number.trim() === "") {
+      return res.status(400).json({ message: "Plate number is required" });
     }
 
-    const updated = await Vehicle.findByIdAndUpdate(
+    // Ensure plate number is unique
+    const conflict = await Vehicle.findOne({
+      _id: { $ne: id },
+      plate_number,
+    });
+    if (conflict) {
+      return res.status(400).json({ message: "Plate number already exists" });
+    }
+
+    // Update vehicle
+    const updatedVehicle = await Vehicle.findByIdAndUpdate(
       id,
       {
         user_id,
-        company_id,
+        company_id: company_id && company_id.trim() !== "" ? company_id : null,
         plate_number,
         model,
         batteryCapacity,
@@ -145,14 +157,17 @@ exports.updateVehicleById = async (req, res) => {
     )
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      );
-    if (!updated) {
-      return res.status(404).json({ message: "Vehicle not found" });
-    }
-    res.status(200).json(updated);
+      .populate({
+        path: "vehicle_subscription_id",
+        select:
+          "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
+        populate: {
+          path: "subscription_id",
+          select: "name price billing_cycle limit_type",
+        },
+      });
+
+    res.status(200).json(updatedVehicle);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -184,10 +199,15 @@ exports.getMyVehicles = async (req, res) => {
     const vehicles = await Vehicle.find({ user_id: userId })
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
-      .populate(
-        "subscription_id",
-        "name price billing_cycle limit_type limit_value"
-      )
+      .populate({
+        path: "vehicle_subscription_id",
+        select:
+          "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
+        populate: {
+          path: "subscription_id",
+          select: "name price billing_cycle limit_type",
+        },
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
