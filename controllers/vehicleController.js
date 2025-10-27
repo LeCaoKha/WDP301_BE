@@ -45,10 +45,15 @@ exports.createVehicle = async (req, res) => {
     const populatedVehicle = await Vehicle.findById(vehicle._id)
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
-      .populate(
-        "vehicle_subscription_id",
-        "name price billing_cycle limit_type"
-      );
+      .populate({
+        path: "vehicle_subscription_id",
+        select:
+          "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
+        populate: {
+          path: "subscription_id",
+          select: "name price billing_cycle description isCompany discount",
+        },
+      });
 
     res.status(201).json(populatedVehicle);
   } catch (error) {
@@ -68,7 +73,7 @@ exports.getAllVehicles = async (req, res) => {
           "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
         populate: {
           path: "subscription_id",
-          select: "name price billing_cycle limit_type",
+          select: "name price billing_cycle description isCompany discount",
         },
       });
     res.status(200).json(vehicles);
@@ -90,7 +95,7 @@ exports.getVehicleById = async (req, res) => {
           "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
         populate: {
           path: "subscription_id",
-          select: "name price billing_cycle limit_type",
+          select: "name price billing_cycle description isCompany discount",
         },
       });
     if (!vehicle) {
@@ -163,7 +168,7 @@ exports.updateVehicleById = async (req, res) => {
           "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
         populate: {
           path: "subscription_id",
-          select: "name price billing_cycle limit_type",
+          select: "name price billing_cycle description isCompany discount",
         },
       });
 
@@ -205,7 +210,7 @@ exports.getMyVehicles = async (req, res) => {
           "subscription_id start_date end_date status auto_renew payment_status createdAt updatedAt",
         populate: {
           path: "subscription_id",
-          select: "name price billing_cycle limit_type",
+          select: "name price billing_cycle description isCompany discount",
         },
       })
       .sort({ createdAt: -1 })

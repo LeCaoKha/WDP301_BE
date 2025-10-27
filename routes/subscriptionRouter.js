@@ -64,11 +64,10 @@ module.exports = router;
  *           enum: [prepaid]
  *         description: Filter by plan type
  *       - in: query
- *         name: limit_type
+ *         name: isCompany
  *         schema:
- *           type: string
- *           enum: [vehicles, stations, charging_sessions, users, unlimited]
- *         description: Filter by limit type
+ *           type: boolean
+ *         description: Filter by company subscription plans
  *     responses:
  *       200:
  *         description: List of subscription plans
@@ -92,10 +91,11 @@ module.exports = router;
  *                   billing_cycle:
  *                     type: string
  *                     enum: [1 month, 3 months, 6 months, 1 year]
- *                   limit_type:
- *                     type: string
- *                     enum: [vehicles, stations, charging_sessions, users, unlimited]
  *                   description:
+ *                     type: string
+ *                   isCompany:
+ *                     type: boolean
+ *                   discount:
  *                     type: string
  *                   is_active:
  *                     type: boolean
@@ -125,7 +125,6 @@ module.exports = router;
  *               - name
  *               - price
  *               - billing_cycle
- *               - limit_type
  *             properties:
  *               type:
  *                 type: string
@@ -148,16 +147,21 @@ module.exports = router;
  *                 enum: [1 month, 3 months, 6 months, 1 year]
  *                 description: Billing cycle for the subscription
  *                 example: "1 month"
- *               limit_type:
- *                 type: string
- *                 enum: [vehicles, stations, charging_sessions, users, unlimited]
- *                 description: Type of limit applied to the subscription
- *                 example: "vehicles"
  *               description:
  *                 type: string
  *                 maxLength: 1000
  *                 description: Detailed description of the subscription plan
  *                 example: "Premium plan with up to 10 vehicles and priority support"
+ *               isCompany:
+ *                 type: boolean
+ *                 description: Whether this subscription plan is for companies
+ *                 default: false
+ *                 example: false
+ *               discount:
+ *                 type: string
+ *                 maxLength: 10
+ *                 description: Discount percentage (e.g., '15%', '30%')
+ *                 example: "15%"
  *     responses:
  *       201:
  *         description: Subscription plan created successfully
@@ -177,9 +181,11 @@ module.exports = router;
  *                   format: decimal
  *                 billing_cycle:
  *                   type: string
- *                 limit_type:
- *                   type: string
  *                 description:
+ *                   type: string
+ *                 isCompany:
+ *                   type: boolean
+ *                 discount:
  *                   type: string
  *                 is_active:
  *                   type: boolean
@@ -232,9 +238,11 @@ module.exports = router;
  *                   format: decimal
  *                 billing_cycle:
  *                   type: string
- *                 limit_type:
- *                   type: string
  *                 description:
+ *                   type: string
+ *                 isCompany:
+ *                   type: boolean
+ *                 discount:
  *                   type: string
  *                 is_active:
  *                   type: boolean
@@ -286,14 +294,17 @@ module.exports = router;
  *                 type: string
  *                 enum: [1 month, 3 months, 6 months, 1 year]
  *                 description: Billing cycle for the subscription
- *               limit_type:
- *                 type: string
- *                 enum: [vehicles, stations, charging_sessions, users, unlimited]
- *                 description: Type of limit applied to the subscription
  *               description:
  *                 type: string
  *                 maxLength: 1000
  *                 description: Detailed description of the subscription plan
+ *               isCompany:
+ *                 type: boolean
+ *                 description: Whether this subscription plan is for companies
+ *               discount:
+ *                 type: string
+ *                 maxLength: 10
+ *                 description: Discount percentage (e.g., '15%', '30%')
  *               is_active:
  *                 type: boolean
  *                 description: Whether the subscription plan is active
@@ -316,9 +327,11 @@ module.exports = router;
  *                   format: decimal
  *                 billing_cycle:
  *                   type: string
- *                 limit_type:
- *                   type: string
  *                 description:
+ *                   type: string
+ *                 isCompany:
+ *                   type: boolean
+ *                 discount:
  *                   type: string
  *                 is_active:
  *                   type: boolean
@@ -406,9 +419,11 @@ module.exports = router;
  *                       format: decimal
  *                     billing_cycle:
  *                       type: string
- *                     limit_type:
- *                       type: string
  *                     description:
+ *                       type: string
+ *                     isCompany:
+ *                       type: boolean
+ *                     discount:
  *                       type: string
  *                     is_active:
  *                       type: boolean

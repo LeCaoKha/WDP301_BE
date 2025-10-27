@@ -2,8 +2,10 @@ const express = require("express");
 const router = express.Router();
 const accountController = require("../controllers/accountController");
 const { authenticateToken } = require("../middleware/auth");
+const upload = require("../middleware/uploadExcel");
 
 // Account management routes
+router.post("/import", upload.single("file"), accountController.importManyUser);
 router.get("/", authenticateToken, accountController.getAllAccounts);
 router.get("/me", authenticateToken, accountController.getMyAccount);
 router.get("/:id", authenticateToken, accountController.getAccountById);
@@ -161,4 +163,50 @@ module.exports = router;
  *         description: Unbanned account
  *       404:
  *         description: Account not found
+ */
+/**
+ * @swagger
+ * /api/accounts/import:
+ *   post:
+ *     summary: Import multiple accounts from Excel file
+ *     description: >
+ *       Upload an Excel file (.xlsx or .xls) containing multiple users to create them in bulk.
+ *
+ *       **Excel columns example:**
+ *       | username | email | phone | password | role | status |
+ *       |-----------|--------|--------|-----------|--------|---------|
+ *       | user1 | user1@gmail.com | 0901234567 | 123456 | user | active |
+ *       | user2 | user2@gmail.com | 0909999999 | 654321 | admin | inactive |
+ *     tags: [Account]
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx or .xls) containing account data
+ *     responses:
+ *       201:
+ *         description: Successfully imported accounts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Imported 5 users successfully
+ *                 count:
+ *                   type: integer
+ *                   example: 5
+ *       400:
+ *         description: Invalid or missing file
+ *       500:
+ *         description: Server error
  */

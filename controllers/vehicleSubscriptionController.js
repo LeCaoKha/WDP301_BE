@@ -84,7 +84,10 @@ exports.createVehicleSubscription = async (req, res) => {
       vehicleSubscription._id
     )
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate("subscription_id", "name price billing_cycle limit_type");
+      .populate(
+        "subscription_id",
+        "name price billing_cycle description isCompany discount"
+      );
 
     res.status(201).json(populatedSubscription);
   } catch (error) {
@@ -152,7 +155,10 @@ exports.getVehicleSubscriptionById = async (req, res) => {
     const { id } = req.params;
     const vehicleSubscription = await VehicleSubscription.findById(id)
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate("subscription_id", "name price billing_cycle limit_type");
+      .populate(
+        "subscription_id",
+        "name price billing_cycle description isCompany discount"
+      );
 
     if (!vehicleSubscription) {
       return res
@@ -242,7 +248,10 @@ exports.updateVehicleSubscriptionById = async (req, res) => {
       { new: true, runValidators: true }
     )
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate("subscription_id", "name price billing_cycle limit_type");
+      .populate(
+        "subscription_id",
+        "name price billing_cycle description isCompany discount"
+      );
 
     if (!updated) {
       return res
@@ -325,7 +334,10 @@ exports.checkVehicleSubscription = async (req, res) => {
       status: { $in: ["active", "expired"] },
     })
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate("subscription_id", "name price billing_cycle limit_type");
+      .populate(
+        "subscription_id",
+        "name price billing_cycle description isCompany discount"
+      );
 
     if (!subscription) {
       return res.status(200).json({
@@ -420,7 +432,10 @@ exports.toggleAutoRenew = async (req, res) => {
 
     const updatedSubscription = await VehicleSubscription.findById(id)
       .populate("vehicle_id", "plate_number model user_id company_id")
-      .populate("subscription_id", "name price billing_cycle limit_type");
+      .populate(
+        "subscription_id",
+        "name price billing_cycle description isCompany discount"
+      );
 
     res.status(200).json({
       message: `Auto renew ${auto_renew ? "enabled" : "disabled"} successfully`,
@@ -511,7 +526,10 @@ exports.selectOptionAfterExpire = async (req, res) => {
 
       const updatedSubscription = await VehicleSubscription.findById(id)
         .populate("vehicle_id", "plate_number model user_id company_id")
-        .populate("subscription_id", "name price billing_cycle limit_type");
+        .populate(
+          "subscription_id",
+          "name price billing_cycle limit_type isCompany discount"
+        );
 
       return res.status(200).json({
         message: "Subscription renewed successfully",
@@ -571,7 +589,10 @@ exports.selectOptionAfterExpire = async (req, res) => {
 
       const updatedSubscription = await VehicleSubscription.findById(id)
         .populate("vehicle_id", "plate_number model user_id company_id")
-        .populate("subscription_id", "name price billing_cycle limit_type");
+        .populate(
+          "subscription_id",
+          "name price billing_cycle limit_type isCompany discount"
+        );
 
       return res.status(200).json({
         message: "Subscription plan changed successfully",
