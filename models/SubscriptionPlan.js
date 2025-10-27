@@ -30,18 +30,24 @@ const subscriptionPlanSchema = new mongoose.Schema(
       enum: ["1 month", "3 months", "6 months", "1 year"],
       description: "Billing cycle for the subscription",
     },
-    limit_type: {
-      type: String,
-      required: true,
-      enum: ["vehicles", "stations", "charging_sessions", "users", "unlimited"],
-      description: "Type of limit applied to the subscription",
-    },
     description: {
       type: String,
       required: false,
       maxlength: 1000,
       trim: true,
       description: "Detailed description of the subscription plan",
+    },
+    isCompany: {
+      type: Boolean,
+      default: false,
+      description: "Whether this subscription plan is for companies",
+    },
+    discount: {
+      type: String,
+      required: false,
+      trim: true,
+      maxlength: 10,
+      description: "Discount percentage (e.g., '15%', '30%')",
     },
     is_active: {
       type: Boolean,

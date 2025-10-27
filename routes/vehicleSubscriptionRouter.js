@@ -148,19 +148,6 @@ module.exports = router;
  *                             type: string
  *                           company_id:
  *                             type: string
- *                           subscription_id:
- *                             type: object
- *                             properties:
- *                               _id:
- *                                 type: string
- *                               name:
- *                                 type: string
- *                               price:
- *                                 type: number
- *                               billing_cycle:
- *                                 type: string
- *                               limit_type:
- *                                 type: string
  *                       subscription_id:
  *                         type: object
  *                         properties:
@@ -172,7 +159,11 @@ module.exports = router;
  *                             type: number
  *                           billing_cycle:
  *                             type: string
- *                           limit_type:
+ *                           description:
+ *                             type: string
+ *                           isCompany:
+ *                             type: boolean
+ *                           discount:
  *                             type: string
  *                       start_date:
  *                         type: string
@@ -281,7 +272,11 @@ module.exports = router;
  *                       type: number
  *                     billing_cycle:
  *                       type: string
- *                     limit_type:
+ *                     description:
+ *                       type: string
+ *                     isCompany:
+ *                       type: boolean
+ *                     discount:
  *                       type: string
  *                 start_date:
  *                   type: string
@@ -367,19 +362,6 @@ module.exports = router;
  *                             type: string
  *                           company_id:
  *                             type: string
- *                           subscription_id:
- *                             type: object
- *                             properties:
- *                               _id:
- *                                 type: string
- *                               name:
- *                                 type: string
- *                               price:
- *                                 type: number
- *                               billing_cycle:
- *                                 type: string
- *                               limit_type:
- *                                 type: string
  *                       subscription_id:
  *                         type: object
  *                         properties:
@@ -391,7 +373,11 @@ module.exports = router;
  *                             type: number
  *                           billing_cycle:
  *                             type: string
- *                           limit_type:
+ *                           description:
+ *                             type: string
+ *                           isCompany:
+ *                             type: boolean
+ *                           discount:
  *                             type: string
  *                       start_date:
  *                         type: string
@@ -478,7 +464,11 @@ module.exports = router;
  *                       type: number
  *                     billing_cycle:
  *                       type: string
- *                     limit_type:
+ *                     description:
+ *                       type: string
+ *                     isCompany:
+ *                       type: boolean
+ *                     discount:
  *                       type: string
  *                 start_date:
  *                   type: string
@@ -590,7 +580,11 @@ module.exports = router;
  *                           type: number
  *                         billing_cycle:
  *                           type: string
- *                         limit_type:
+ *                         description:
+ *                           type: string
+ *                         isCompany:
+ *                           type: boolean
+ *                         discount:
  *                           type: string
  *                     start_date:
  *                       type: string
@@ -712,19 +706,6 @@ module.exports = router;
  *                             type: string
  *                           company_id:
  *                             type: string
- *                           subscription_id:
- *                             type: object
- *                             properties:
- *                               _id:
- *                                 type: string
- *                               name:
- *                                 type: string
- *                               price:
- *                                 type: number
- *                               billing_cycle:
- *                                 type: string
- *                               limit_type:
- *                                 type: string
  *                       subscription_id:
  *                         type: object
  *                         properties:
@@ -736,7 +717,11 @@ module.exports = router;
  *                             type: number
  *                           billing_cycle:
  *                             type: string
- *                           limit_type:
+ *                           description:
+ *                             type: string
+ *                           isCompany:
+ *                             type: boolean
+ *                           discount:
  *                             type: string
  *                       start_date:
  *                         type: string
@@ -893,7 +878,11 @@ module.exports = router;
  *                           type: number
  *                         billing_cycle:
  *                           type: string
- *                         limit_type:
+ *                         description:
+ *                           type: string
+ *                         isCompany:
+ *                           type: boolean
+ *                         discount:
  *                           type: string
  *                     start_date:
  *                       type: string

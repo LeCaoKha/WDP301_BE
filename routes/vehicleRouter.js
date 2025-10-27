@@ -69,18 +69,39 @@ module.exports = router;
  *                     type: string
  *                   batteryCapacity:
  *                     type: number
- *                   subscription_id:
+ *                   vehicle_subscription_id:
  *                     type: object
  *                     properties:
  *                       _id:
  *                         type: string
- *                       name:
+ *                       subscription_id:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           price:
+ *                             type: number
+ *                           billing_cycle:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                           isCompany:
+ *                             type: boolean
+ *                           discount:
+ *                             type: string
+ *                       start_date:
  *                         type: string
- *                       price:
- *                         type: number
- *                       billing_cycle:
+ *                         format: date-time
+ *                       end_date:
  *                         type: string
- *                       limit_type:
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                       auto_renew:
+ *                         type: boolean
+ *                       payment_status:
  *                         type: string
  *                   createdAt:
  *                     type: string
@@ -199,13 +220,34 @@ module.exports = router;
  *                         properties:
  *                           _id:
  *                             type: string
- *                           name:
+ *                           subscription_id:
+ *                             type: object
+ *                             properties:
+ *                               _id:
+ *                                 type: string
+ *                               name:
+ *                                 type: string
+ *                               price:
+ *                                 type: number
+ *                               billing_cycle:
+ *                                 type: string
+ *                               description:
+ *                                 type: string
+ *                               isCompany:
+ *                                 type: boolean
+ *                               discount:
+ *                                 type: string
+ *                           start_date:
  *                             type: string
- *                           price:
- *                             type: number
- *                           billing_cycle:
+ *                             format: date-time
+ *                           end_date:
  *                             type: string
- *                           limit_type:
+ *                             format: date-time
+ *                           status:
+ *                             type: string
+ *                           auto_renew:
+ *                             type: boolean
+ *                           payment_status:
  *                             type: string
  *                       createdAt:
  *                         type: string
@@ -283,18 +325,39 @@ module.exports = router;
  *                   type: string
  *                 batteryCapacity:
  *                   type: number
- *                 subscriptionId:
+ *                 vehicle_subscription_id:
  *                   type: object
  *                   properties:
  *                     _id:
  *                       type: string
- *                     name:
+ *                     subscription_id:
+ *                       type: object
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         price:
+ *                           type: number
+ *                         billing_cycle:
+ *                           type: string
+ *                         description:
+ *                           type: string
+ *                         isCompany:
+ *                           type: boolean
+ *                         discount:
+ *                           type: string
+ *                     start_date:
  *                       type: string
- *                     price:
- *                       type: number
- *                     billing_cycle:
+ *                       format: date-time
+ *                     end_date:
  *                       type: string
- *                     limit_type:
+ *                       format: date-time
+ *                     status:
+ *                       type: string
+ *                     auto_renew:
+ *                       type: boolean
+ *                     payment_status:
  *                       type: string
  *                 createdAt:
  *                   type: string

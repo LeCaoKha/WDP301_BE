@@ -3,8 +3,15 @@ const SubscriptionPlan = require("../models/SubscriptionPlan");
 // Create Subscription Plan
 exports.createSubscriptionPlan = async (req, res) => {
   try {
-    const { type, name, price, billing_cycle, limit_type, description } =
-      req.body;
+    const {
+      type,
+      name,
+      price,
+      billing_cycle,
+      description,
+      isCompany,
+      discount,
+    } = req.body;
 
     // Check if plan with same name already exists
     const existingPlan = await SubscriptionPlan.findOne({ name });
@@ -19,8 +26,9 @@ exports.createSubscriptionPlan = async (req, res) => {
       name,
       price,
       billing_cycle,
-      limit_type,
       description,
+      isCompany,
+      discount,
     });
     res.status(201).json(subscriptionPlan);
   } catch (error) {
@@ -31,7 +39,7 @@ exports.createSubscriptionPlan = async (req, res) => {
 // Get all Subscription Plans
 exports.getAllSubscriptionPlans = async (req, res) => {
   try {
-    const { is_active, type, limit_type } = req.query;
+    const { is_active, type, isCompany } = req.query;
 
     let filter = {};
 
@@ -42,8 +50,8 @@ exports.getAllSubscriptionPlans = async (req, res) => {
     if (type) {
       filter.type = type;
     }
-    if (limit_type) {
-      filter.limit_type = limit_type;
+    if (isCompany !== undefined) {
+      filter.isCompany = isCompany === "true";
     }
 
     const subscriptionPlans = await SubscriptionPlan.find(filter).sort({
@@ -78,8 +86,9 @@ exports.updateSubscriptionPlanById = async (req, res) => {
       name,
       price,
       billing_cycle,
-      limit_type,
       description,
+      isCompany,
+      discount,
       is_active,
     } = req.body;
 
@@ -103,8 +112,9 @@ exports.updateSubscriptionPlanById = async (req, res) => {
         name,
         price,
         billing_cycle,
-        limit_type,
         description,
+        isCompany,
+        discount,
         is_active,
       },
       { new: true, runValidators: true }

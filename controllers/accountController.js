@@ -1,3 +1,5 @@
+const xlsx = require("xlsx");
+const bcrypt = require("bcryptjs");
 const Account = require("../models/Account");
 
 // Get all accounts
@@ -133,6 +135,54 @@ exports.getMyAccount = async (req, res) => {
 
     res.status(200).json(account);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.importManyUser = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    // Đọc buffer của file Excel
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Convert thành JSON
+    const data = xlsx.utils.sheet_to_json(worksheet);
+
+    if (!data.length) {
+      return res.status(400).json({ message: "Excel file is empty" });
+    }
+
+    // Map từng user
+    const usersToInsert = await Promise.all(
+      data.map(async (item) => {
+        const rawPassword = item.password ? String(item.password) : "123456";
+        const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+        return {
+          username: item.username,
+          email: item.email,
+          phone: item.phone,
+          role: item.role || "user",
+          status: item.status || "active",
+          password: hashedPassword,
+        };
+      })
+    );
+
+    // Thêm vào DB
+    await Account.insertMany(usersToInsert);
+
+    res.status(201).json({
+      message: `Imported ${usersToInsert.length} users successfully`,
+      count: usersToInsert.length,
+    });
+  } catch (error) {
+    console.error("Error importing users:", error);
     res.status(500).json({ message: error.message });
   }
 };
