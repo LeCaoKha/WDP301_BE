@@ -83,6 +83,8 @@ module.exports = router;
  *   get:
  *     summary: Get account by id
  *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -92,11 +94,17 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Account detail
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
  *       404:
  *         description: Account not found
  *   put:
  *     summary: Update account by id
  *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -125,6 +133,10 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Updated account
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
  *       404:
  *         description: Account not found
  */
@@ -134,6 +146,8 @@ module.exports = router;
  *   patch:
  *     summary: Ban account by id (set status inactive)
  *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -143,6 +157,10 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Banned account
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
  *       404:
  *         description: Account not found
  */
@@ -152,6 +170,8 @@ module.exports = router;
  *   patch:
  *     summary: Unban account by id (set status active)
  *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -161,6 +181,10 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Unbanned account
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
  *       404:
  *         description: Account not found
  */
