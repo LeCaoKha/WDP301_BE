@@ -112,7 +112,7 @@ chargingSessionSchema.methods.calculateCharges = async function () {
     throw new Error('Charging point not found');
   }
   
-  if (!vehicle || !vehicle.battery_capacity) {
+  if (!vehicle || !vehicle.batteryCapacity) {
     throw new Error('Vehicle battery capacity not configured');
   }
   

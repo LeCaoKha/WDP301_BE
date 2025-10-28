@@ -81,6 +81,8 @@ exports.getStationById = async (req, res) => {
         latitude: station.latitude,
         longitude: station.longitude,
         power_capacity: station.power_capacity,
+        price_per_kwh: station.price_per_kwh,
+        status: station.status,
         connector_type: station.connector_type,
         rating: station.rating,
         create_at: station.create_at
