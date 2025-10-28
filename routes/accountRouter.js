@@ -192,15 +192,36 @@ module.exports = router;
  * @swagger
  * /api/accounts/import:
  *   post:
- *     summary: Import multiple accounts from Excel file
+ *     summary: Import multiple accounts and vehicles from Excel file
  *     description: >
  *       Upload an Excel file (.xlsx or .xls) containing multiple users to create them in bulk.
+ *       Also automatically creates vehicles for each user based on the data in Excel.
  *
- *       **Excel columns example:**
- *       | username | email | phone | password | role | status |
- *       |-----------|--------|--------|-----------|--------|---------|
- *       | user1 | user1@gmail.com | 0901234567 | 123456 | user | active |
- *       | user2 | user2@gmail.com | 0909999999 | 654321 | admin | inactive |
+ *
+ *       **Required Excel columns (User):**
+ *       - username (string, required)
+ *       - email (string, required)
+ *       - phone (string, required)
+ *       - password (string, optional - default: "123456")
+ *       - role (string, optional - default: "user", values: admin, driver, user)
+ *       - status (string, optional - default: "active", values: active, inactive)
+ *
+ *
+ *       **Required Excel columns (Vehicle):**
+ *       - plate_number (string, required for creating vehicle)
+ *       - model (string, optional)
+ *       - batteryCapacity (number, optional)
+ *
+ *
+ *       **Excel file example:**
+ *       | username | email | phone | password | role | status | plate_number | model | batteryCapacity |
+ *       |----------|--------|--------|----------|------|--------|--------------|-------|-----------------|
+ *       | kha 1 | kha1@gmail.com | 901234568 | 123456 | admin | active | 1111-111111 | v8 | 1000 |
+ *       | kha 2 | kha2@gmail.com | 912345679 | 123456 | driver | active | 1111-111112 | v8 | 1000 |
+ *       | kha 3 | kha3@gmail.com | 987654322 | 123456 | driver | inactive | 1111-111113 | v8 | 1000 |
+ *
+ *
+ *       **Note:** Vehicle will only be created if plate_number is provided in Excel.
  *     tags: [Account]
  *     consumes:
  *       - multipart/form-data
@@ -210,14 +231,20 @@ module.exports = router;
  *         multipart/form-data:
  *           schema:
  *             type: object
+ *             required:
+ *               - file
  *             properties:
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: Excel file (.xlsx or .xls) containing account data
+ *                 description: Excel file (.xlsx or .xls) containing account and vehicle data
+ *               company_id:
+ *                 type: string
+ *                 description: Company ID to assign to all created vehicles (optional)
+ *                 example: "507f1f77bcf86cd799439011"
  *     responses:
  *       201:
- *         description: Successfully imported accounts
+ *         description: Successfully imported accounts and vehicles
  *         content:
  *           application/json:
  *             schema:
@@ -225,10 +252,47 @@ module.exports = router;
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Imported 5 users successfully
- *                 count:
+ *                   example: Imported 3 users and 3 vehicles successfully
+ *                 usersCount:
  *                   type: integer
- *                   example: 5
+ *                   example: 3
+ *                 vehiclesCount:
+ *                   type: integer
+ *                   example: 3
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                 vehicles:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       user_id:
+ *                         type: string
+ *                       company_id:
+ *                         type: string
+ *                       plate_number:
+ *                         type: string
+ *                       model:
+ *                         type: string
+ *                       batteryCapacity:
+ *                         type: number
  *       400:
  *         description: Invalid or missing file
  *       500:
