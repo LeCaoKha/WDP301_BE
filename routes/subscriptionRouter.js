@@ -58,12 +58,6 @@ module.exports = router;
  *           type: boolean
  *         description: Filter by active status
  *       - in: query
- *         name: type
- *         schema:
- *           type: string
- *           enum: [prepaid]
- *         description: Filter by plan type
- *       - in: query
  *         name: isCompany
  *         schema:
  *           type: boolean

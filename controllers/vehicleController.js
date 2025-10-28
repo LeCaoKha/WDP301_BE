@@ -64,7 +64,24 @@ exports.createVehicle = async (req, res) => {
 // Get all Vehicles
 exports.getAllVehicles = async (req, res) => {
   try {
-    const vehicles = await Vehicle.find()
+    const { isCompany } = req.query;
+
+    // Build filter query
+    let filter = {};
+
+    // Filter by isCompany (whether vehicle belongs to a company)
+    if (isCompany !== undefined && isCompany !== null && isCompany !== "") {
+      const isCompanyBool = isCompany === "true" || isCompany === true;
+      if (isCompanyBool) {
+        // Get vehicles that belong to a company (company_id is not null)
+        filter.company_id = { $ne: null };
+      } else {
+        // Get vehicles that don't belong to a company (company_id is null)
+        filter.company_id = null;
+      }
+    }
+
+    const vehicles = await Vehicle.find(filter)
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
       .populate({
@@ -197,11 +214,26 @@ exports.getMyVehicles = async (req, res) => {
   try {
     // Get user ID from JWT token (set by auth middleware)
     const userId = req.user.accountId;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, isCompany } = req.query;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const vehicles = await Vehicle.find({ user_id: userId })
+    // Build filter query
+    let filter = { user_id: userId };
+
+    // Filter by isCompany (whether vehicle belongs to a company)
+    if (isCompany !== undefined && isCompany !== null && isCompany !== "") {
+      const isCompanyBool = isCompany === "true" || isCompany === true;
+      if (isCompanyBool) {
+        // Get vehicles that belong to a company (company_id is not null)
+        filter.company_id = { $ne: null };
+      } else {
+        // Get vehicles that don't belong to a company (company_id is null)
+        filter.company_id = null;
+      }
+    }
+
+    const vehicles = await Vehicle.find(filter)
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
       .populate({
@@ -217,7 +249,7 @@ exports.getMyVehicles = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    const total = await Vehicle.countDocuments({ user_id: userId });
+    const total = await Vehicle.countDocuments(filter);
 
     res.status(200).json({
       vehicles,

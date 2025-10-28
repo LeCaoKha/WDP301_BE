@@ -1,6 +1,7 @@
 const xlsx = require("xlsx");
 const bcrypt = require("bcryptjs");
 const Account = require("../models/Account");
+const Vehicle = require("../models/Vehicle");
 
 // Get all accounts
 exports.getAllAccounts = async (req, res) => {
@@ -145,6 +146,9 @@ exports.importManyUser = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
+    // Lấy company_id từ request body hoặc query
+    const { company_id } = req.body;
+
     // Đọc buffer của file Excel
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
@@ -170,16 +174,52 @@ exports.importManyUser = async (req, res) => {
           role: item.role || "user",
           status: item.status || "active",
           password: hashedPassword,
+          excelData: {
+            // Lưu thông tin xe từ Excel để dùng sau
+            plate_number: item.plate_number,
+            model: item.model,
+            batteryCapacity: item.batteryCapacity,
+          },
         };
       })
     );
 
-    // Thêm vào DB
-    await Account.insertMany(usersToInsert);
+    // Thêm users vào DB
+    const createdUsers = await Account.insertMany(
+      usersToInsert.map(({ excelData, ...user }) => user)
+    );
+
+    // Tạo vehicles cho từng user
+    const vehiclesToInsert = [];
+    for (let i = 0; i < createdUsers.length; i++) {
+      const user = createdUsers[i];
+      const excelData = usersToInsert[i].excelData;
+
+      // Chỉ tạo vehicle nếu có thông tin plate_number
+      if (excelData.plate_number) {
+        vehiclesToInsert.push({
+          user_id: user._id,
+          company_id: company_id || null,
+          plate_number: excelData.plate_number,
+          model: excelData.model || "",
+          batteryCapacity: excelData.batteryCapacity || 0,
+          vehicle_subscription_id: null,
+        });
+      }
+    }
+
+    // Thêm vehicles vào DB nếu có
+    let createdVehicles = [];
+    if (vehiclesToInsert.length > 0) {
+      createdVehicles = await Vehicle.insertMany(vehiclesToInsert);
+    }
 
     res.status(201).json({
-      message: `Imported ${usersToInsert.length} users successfully`,
-      count: usersToInsert.length,
+      message: `Imported ${createdUsers.length} users and ${createdVehicles.length} vehicles successfully`,
+      usersCount: createdUsers.length,
+      vehiclesCount: createdVehicles.length,
+      users: createdUsers,
+      vehicles: createdVehicles,
     });
   } catch (error) {
     console.error("Error importing users:", error);

@@ -56,7 +56,7 @@ exports.payForSubscription = async (req, res) => {
       vnp_TxnRef: txnRef,
       vnp_OrderInfo: orderInfo,
       vnp_OrderType: ProductCode.Other,
-      vnp_ReturnUrl: `http://localhost:5000/api/payment/pay-for-subscription-return/${txnRef}`, // txnRef dùng làm ID giao dịch
+      vnp_ReturnUrl: `https://wdp301-be-8izi.onrender.com/api/payment/pay-for-subscription-return/${txnRef}`, // txnRef dùng làm ID giao dịch
       vnp_Locale: VnpLocale.VN,
       vnp_CreateDate: dateFormat(new Date()),
       vnp_ExpireDate: dateFormat(tomorrow),
@@ -144,7 +144,7 @@ exports.payForSubscriptionReturn = async (req, res) => {
       if (!subscriptionPlan) {
         console.error("Subscription plan not found");
         return res.redirect(
-          `http://localhost:5173/payment-failed?txnRef=${txnRef}&error=plan_not_found`
+          `evchargingapp://payment-failed?txnRef=${txnRef}&error=plan_not_found`
         );
       }
 
@@ -190,15 +190,14 @@ exports.payForSubscriptionReturn = async (req, res) => {
       );
 
       return res.redirect(
-        `http://localhost:5173/vnpay/return?status=success&vehicleSubscriptionId=${vehicleSubscription._id}`
+        // `http://localhost:5173/vnpay/return?status=success&vehicleSubscriptionId=${vehicleSubscription._id}`
+        `evchargingapp://vnpay/return?status=success&vehicleSubscriptionId=${vehicleSubscription._id}`
       );
     }
 
     // ❌ Hash sai hoặc không thành công
     console.warn("VNPay signature mismatch or failed payment");
-    return res.redirect(
-      `http://localhost:5173/payment-failed?txnRef=${txnRef}`
-    );
+    return res.redirect(`evchargingapp://payment-failed?txnRef=${txnRef}`);
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay:", error);
     return res.status(500).json({ message: "Lỗi xử lý kết quả thanh toán" });

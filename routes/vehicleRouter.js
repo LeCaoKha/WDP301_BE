@@ -27,6 +27,12 @@ module.exports = router;
  *     tags: [Vehicle]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: isCompany
+ *         schema:
+ *           type: boolean
+ *         description: Filter vehicles by company ownership (true = company vehicles, false = personal vehicles)
  *     responses:
  *       200:
  *         description: List of vehicles
@@ -170,6 +176,11 @@ module.exports = router;
  *           type: integer
  *           default: 10
  *         description: Number of items per page
+ *       - in: query
+ *         name: isCompany
+ *         schema:
+ *           type: boolean
+ *         description: Filter vehicles by company ownership (true = company vehicles, false = personal vehicles)
  *     responses:
  *       200:
  *         description: List of current user's vehicles with pagination

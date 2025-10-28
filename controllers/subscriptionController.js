@@ -39,16 +39,13 @@ exports.createSubscriptionPlan = async (req, res) => {
 // Get all Subscription Plans
 exports.getAllSubscriptionPlans = async (req, res) => {
   try {
-    const { is_active, type, isCompany } = req.query;
+    const { is_active, isCompany } = req.query;
 
     let filter = {};
 
     // Apply filters if provided
     if (is_active !== undefined) {
       filter.is_active = is_active === "true";
-    }
-    if (type) {
-      filter.type = type;
     }
     if (isCompany !== undefined) {
       filter.isCompany = isCompany === "true";
