@@ -20,6 +20,7 @@ const stationRouter = require("./routes/stationRouter");
 const chargingRouter = require("./routes/chargingRouter");
 const paymentRouter = require("./routes/paymentRouter");
 const chargingSessionRouter = require("./routes/chargingSessionRouter");
+const staffRouter = require("./routes/staffRouter");
 var app = express();
 
 // CORS configuration
@@ -64,6 +65,7 @@ app.use("/api/stations", stationRouter);
 app.use("/api/charging-point", chargingRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/charging-sessions", chargingSessionRouter);
+app.use("/api/staff", staffRouter);
 const swaggerDocs = require("./swagger");
 swaggerDocs(app, process.env.PORT || 5000);
 

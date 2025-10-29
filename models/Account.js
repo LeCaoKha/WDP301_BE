@@ -12,8 +12,12 @@ const accountSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["driver", "admin", "staff"],
+      enum: ["driver", "admin", "staff", "company"],
       default: "driver",
+    },
+    isCompany: {
+      type: Boolean,
+      default: false,
     },
     refreshToken: { type: String },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

@@ -70,9 +70,14 @@ module.exports = router;
  *               role:
  *                 type: string
  *                 description: User role
- *                 enum: [driver, admin, company]
+ *                 enum: [driver, admin, staff, company]
  *                 default: driver
  *                 example: "admin"
+ *               isCompany:
+ *                 type: boolean
+ *                 description: Whether this account represents a company
+ *                 default: false
+ *                 example: false
  *     responses:
  *       201:
  *         description: Account created successfully
