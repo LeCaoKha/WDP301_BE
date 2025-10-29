@@ -2,6 +2,8 @@ const xlsx = require("xlsx");
 const bcrypt = require("bcryptjs");
 const Account = require("../models/Account");
 const Vehicle = require("../models/Vehicle");
+const VehicleSubscription = require("../models/VehicleSubscription");
+const SubscriptionPlan = require("../models/SubscriptionPlan");
 
 // Get all accounts
 exports.getAllAccounts = async (req, res) => {
@@ -31,7 +33,7 @@ exports.getAccountById = async (req, res) => {
 exports.updateAccountById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { username, email, phone, role, status } = req.body;
+    const { username, email, phone, role, status, isCompany } = req.body;
 
     // optional: validate email/phone when provided
     if (email) {
@@ -73,11 +75,15 @@ exports.updateAccountById = async (req, res) => {
       }
     }
 
-    const updated = await Account.findByIdAndUpdate(
-      id,
-      { username, email, phone, role, status },
-      { new: true, runValidators: true }
-    ).select("-password");
+    const updateData = { username, email, phone, role, status };
+    if (isCompany !== undefined) {
+      updateData.isCompany = isCompany === true ? true : false;
+    }
+
+    const updated = await Account.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -146,16 +152,30 @@ exports.importManyUser = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    // Lấy company_id từ request body hoặc query
-    const { company_id } = req.body;
+    // Lấy company_id và subscription_id từ request body
+    const { company_id, subscription_id } = req.body;
+
+    // Validate subscription_id nếu được cung cấp
+    let subscriptionPlan = null;
+    if (subscription_id) {
+      subscriptionPlan = await SubscriptionPlan.findById(subscription_id);
+      if (!subscriptionPlan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      if (!subscriptionPlan.is_active) {
+        return res
+          .status(400)
+          .json({ message: "Subscription plan is not active" });
+      }
+    }
 
     // Đọc buffer của file Excel
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
 
-    // Convert thành JSON
-    const data = xlsx.utils.sheet_to_json(worksheet);
+    // Convert thành JSON - Bỏ qua dòng 1 (User/Car header), đọc từ dòng 2 làm header
+    const data = xlsx.utils.sheet_to_json(worksheet, { range: 1 });
 
     if (!data.length) {
       return res.status(400).json({ message: "Excel file is empty" });
@@ -171,8 +191,9 @@ exports.importManyUser = async (req, res) => {
           username: item.username,
           email: item.email,
           phone: item.phone,
-          role: item.role || "user",
+          role: item.role || "driver",
           status: item.status || "active",
+          isCompany: true, // Tự động set là true khi import
           password: hashedPassword,
           excelData: {
             // Lưu thông tin xe từ Excel để dùng sau
@@ -203,23 +224,82 @@ exports.importManyUser = async (req, res) => {
           plate_number: excelData.plate_number,
           model: excelData.model || "",
           batteryCapacity: excelData.batteryCapacity || 0,
-          vehicle_subscription_id: null,
+          vehicle_subscription_id: null, // Sẽ cập nhật sau
         });
       }
     }
 
     // Thêm vehicles vào DB nếu có
     let createdVehicles = [];
+    let createdSubscriptions = [];
+
     if (vehiclesToInsert.length > 0) {
       createdVehicles = await Vehicle.insertMany(vehiclesToInsert);
+
+      // Nếu có subscription_id, tự động tạo VehicleSubscription cho từng xe
+      if (subscription_id && subscriptionPlan) {
+        // Tính toán start_date và end_date dựa trên billing_cycle
+        const startDate = new Date();
+        let daysToAdd = 0;
+
+        switch (subscriptionPlan.billing_cycle) {
+          case "1 month":
+            daysToAdd = 30;
+            break;
+          case "3 months":
+            daysToAdd = 90;
+            break;
+          case "6 months":
+            daysToAdd = 180;
+            break;
+          case "1 year":
+            daysToAdd = 365;
+            break;
+          default:
+            daysToAdd = 30;
+        }
+
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + daysToAdd);
+
+        // Tạo VehicleSubscription cho từng xe
+        const subscriptionsToInsert = createdVehicles.map((vehicle) => ({
+          vehicle_id: vehicle._id,
+          subscription_id: subscription_id,
+          start_date: startDate,
+          end_date: endDate,
+          status: "active",
+          auto_renew: false,
+          payment_status: "paid", // Admin tạo thì mặc định là đã thanh toán
+        }));
+
+        createdSubscriptions = await VehicleSubscription.insertMany(
+          subscriptionsToInsert
+        );
+
+        // Cập nhật vehicle_subscription_id cho từng xe
+        for (let i = 0; i < createdVehicles.length; i++) {
+          await Vehicle.findByIdAndUpdate(createdVehicles[i]._id, {
+            vehicle_subscription_id: createdSubscriptions[i]._id,
+          });
+        }
+      }
     }
 
     res.status(201).json({
-      message: `Imported ${createdUsers.length} users and ${createdVehicles.length} vehicles successfully`,
+      message: `Imported ${createdUsers.length} users, ${
+        createdVehicles.length
+      } vehicles${
+        createdSubscriptions.length > 0
+          ? `, and ${createdSubscriptions.length} subscriptions`
+          : ""
+      } successfully`,
       usersCount: createdUsers.length,
       vehiclesCount: createdVehicles.length,
+      subscriptionsCount: createdSubscriptions.length,
       users: createdUsers,
       vehicles: createdVehicles,
+      subscriptions: createdSubscriptions,
     });
   } catch (error) {
     console.error("Error importing users:", error);

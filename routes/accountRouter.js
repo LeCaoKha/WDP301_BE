@@ -126,10 +126,13 @@ module.exports = router;
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [driver, admin, staff]
+ *                 enum: [driver, admin, staff, company]
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
+ *               isCompany:
+ *                 type: boolean
+ *                 description: Whether this account represents a company
  *     responses:
  *       200:
  *         description: Updated account
@@ -198,13 +201,19 @@ module.exports = router;
  *       Also automatically creates vehicles for each user based on the data in Excel.
  *
  *
+ *       **Excel Structure:**
+ *       - Row 1: Group headers (User, Car) - will be skipped
+ *       - Row 2: Column names (username, email, phone, etc.)
+ *       - Row 3+: Data rows
+ *
  *       **Required Excel columns (User):**
  *       - username (string, required)
  *       - email (string, required)
  *       - phone (string, required)
  *       - password (string, optional - default: "123456")
- *       - role (string, optional - default: "user", values: admin, driver, user)
+ *       - role (string, optional - default: "driver", values: driver, admin, staff, company)
  *       - status (string, optional - default: "active", values: active, inactive)
+ *       - isCompany will be automatically set to TRUE for all imported accounts
  *
  *
  *       **Required Excel columns (Vehicle):**
@@ -214,14 +223,19 @@ module.exports = router;
  *
  *
  *       **Excel file example:**
- *       | username | email | phone | password | role | status | plate_number | model | batteryCapacity |
- *       |----------|--------|--------|----------|------|--------|--------------|-------|-----------------|
- *       | kha 1 | kha1@gmail.com | 901234568 | 123456 | admin | active | 1111-111111 | v8 | 1000 |
- *       | kha 2 | kha2@gmail.com | 912345679 | 123456 | driver | active | 1111-111112 | v8 | 1000 |
- *       | kha 3 | kha3@gmail.com | 987654322 | 123456 | driver | inactive | 1111-111113 | v8 | 1000 |
+ *       Row 1: | User | | | | | | Car | | |
+ *       Row 2: | username | email | phone | password | role | status | plate_number | model | batteryCapacity |
+ *       Row 3: | kha4 | kha4@gmail.com | 901234569 | 123456 | admin | active | 1111-111111 | v8 | 1000 |
+ *       Row 4: | kha5 | kha5@gmail.com | 912345680 | 123456 | driver | active | 1111-111112 | v8 | 1000 |
+ *       Row 5: | company1 | company1@gmail.com | 987654323 | 123456 | company | active | 1111-111113 | v8 | 1000 |
+ *
+ *       Note: All imported accounts will have isCompany=true automatically
  *
  *
- *       **Note:** Vehicle will only be created if plate_number is provided in Excel.
+ *       **Note:**
+ *       - Vehicle will only be created if plate_number is provided in Excel.
+ *       - If subscription_id is provided, a VehicleSubscription will be automatically created for each vehicle with status='active' and payment_status='paid'.
+ *       - The subscription period is calculated based on the billing_cycle of the subscription plan.
  *     tags: [Account]
  *     consumes:
  *       - multipart/form-data
@@ -242,6 +256,10 @@ module.exports = router;
  *                 type: string
  *                 description: Company ID to assign to all created vehicles (optional)
  *                 example: "507f1f77bcf86cd799439011"
+ *               subscription_id:
+ *                 type: string
+ *                 description: Subscription Plan ID to assign to all created vehicles (optional)
+ *                 example: "507f1f77bcf86cd799439012"
  *     responses:
  *       201:
  *         description: Successfully imported accounts and vehicles
@@ -252,11 +270,14 @@ module.exports = router;
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Imported 3 users and 3 vehicles successfully
+ *                   example: Imported 3 users, 3 vehicles, and 3 subscriptions successfully
  *                 usersCount:
  *                   type: integer
  *                   example: 3
  *                 vehiclesCount:
+ *                   type: integer
+ *                   example: 3
+ *                 subscriptionsCount:
  *                   type: integer
  *                   example: 3
  *                 users:
@@ -293,8 +314,35 @@ module.exports = router;
  *                         type: string
  *                       batteryCapacity:
  *                         type: number
+ *                 subscriptions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       vehicle_id:
+ *                         type: string
+ *                       subscription_id:
+ *                         type: string
+ *                       start_date:
+ *                         type: string
+ *                         format: date-time
+ *                       end_date:
+ *                         type: string
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                         example: active
+ *                       auto_renew:
+ *                         type: boolean
+ *                       payment_status:
+ *                         type: string
+ *                         example: paid
  *       400:
- *         description: Invalid or missing file
+ *         description: Invalid or missing file, or subscription plan not active
+ *       404:
+ *         description: Subscription plan not found
  *       500:
  *         description: Server error
  */
