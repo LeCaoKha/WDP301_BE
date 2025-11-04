@@ -76,6 +76,18 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    // ✅ TÍNH THỜI GIAN BOOKING (THEO GIỜ)
+    const durationMs = endTime - startTime;
+    const durationHours = durationMs / (1000 * 60 * 60); // Convert ms sang giờ
+    const durationMinutes = Math.round((durationMs / (1000 * 60)) % 60);
+    
+    // ✅ LÀM TRÒN LÊN (ceiling) - VD: 1.5 giờ = 2 giờ
+    const bookingHours = Math.ceil(durationHours);
+    
+    // ✅ TÍNH PHÍ ĐẶT CHỖ
+    const baseFeePerHour = station.base_fee || 10000;
+    const bookingFee = baseFeePerHour * bookingHours;
+
     // Check for time conflicts with existing bookings
     const conflictingBookings = await Booking.find({
       chargingPoint_id,
@@ -108,24 +120,30 @@ exports.createBooking = async (req, res) => {
       chargingPoint_id,
       start_time: startTime,
       end_time: endTime,
-      status: "pending", // ✅ MẶC ĐỊNH LÀ PENDING
+      status: "pending",
     });
 
     // Populate the response
     const populatedBooking = await Booking.findById(booking._id)
       .populate("user_id", "username email phone_number")
-      .populate("station_id", "name address power_capacity base_fee price_per_kwh") // ✅ THÊM BASE_FEE & PRICE_PER_KWH
+      .populate("station_id", "name address power_capacity base_fee price_per_kwh")
       .populate("vehicle_id", "plate_number model brand batteryCapacity")
       .populate({
         path: "chargingPoint_id",
         select: "name type status",
         populate: {
           path: "stationId",
-          select: "power_capacity base_fee price_per_kwh", // ✅ THÊM GIÁ
+          select: "power_capacity base_fee price_per_kwh",
         },
       });
 
-    // ✅ TRẢ VỀ THÔNG TIN GIÁ
+    // ✅ FORMAT DURATION
+    const durationFormatted = bookingHours === 1 
+      ? "1 giờ" 
+      : durationMinutes > 0 
+        ? `${Math.floor(durationHours)} giờ ${durationMinutes} phút`
+        : `${bookingHours} giờ`;
+
     res.status(201).json({
       message: "Booking created successfully. Please confirm to proceed.",
       booking: {
@@ -162,24 +180,46 @@ exports.createBooking = async (req, res) => {
         schedule: {
           start_time: populatedBooking.start_time,
           end_time: populatedBooking.end_time,
+          duration: durationFormatted,
+          duration_hours: durationHours.toFixed(2),
+          booking_hours: bookingHours, // ✅ SỐ GIỜ LÀM TRÒN
         },
         
-        // ✅ THÔNG TIN GIÁ ĐỂ FRONTEND HIỂN THỊ
-        pricing: {
-          base_fee: populatedBooking.station_id.base_fee || 10000,
-          base_fee_formatted: `${(populatedBooking.station_id.base_fee || 10000).toLocaleString('vi-VN')} VND`,
+        // ✅ PHÍ ĐẶT CHỖ THEO GIỜ
+        booking_fee: {
+          base_fee_per_hour: baseFeePerHour,
+          base_fee_per_hour_formatted: `${baseFeePerHour.toLocaleString('vi-VN')} VND/giờ`,
           
+          booking_hours: bookingHours,
+          booking_fee: bookingFee,
+          booking_fee_formatted: `${bookingFee.toLocaleString('vi-VN')} VND`,
+          
+          calculation: `${bookingHours} giờ × ${baseFeePerHour.toLocaleString('vi-VN')} VND/giờ = ${bookingFee.toLocaleString('vi-VN')} VND`,
+          
+          note: "Booking fee is calculated based on reserved time slot. Actual charging fee depends on energy usage.",
+        },
+        
+        // ✅ GIÁ ĐIỆN (CHO THAM KHẢO)
+        charging_info: {
           price_per_kwh: populatedBooking.station_id.price_per_kwh || 3000,
           price_per_kwh_formatted: `${(populatedBooking.station_id.price_per_kwh || 3000).toLocaleString('vi-VN')} VND/kWh`,
-
-          note: "Base fee will be charged when you start charging. Energy fee depends on actual usage.",
+          
+          note: "This is the energy price. Total cost = Booking fee + Energy fee",
         },
+      },
+      
+      // ✅ PAYMENT INFO
+      payment_required: {
+        booking_fee: bookingFee,
+        booking_fee_formatted: `${bookingFee.toLocaleString('vi-VN')} VND`,
+        description: `Phí đặt chỗ ${bookingHours} giờ tại ${populatedBooking.station_id.name}`,
+        payment_method: "vnpay",
       },
       
       // ✅ NEXT STEP
       next_step: {
-        action: "confirm_booking",
-        message: "Please confirm this booking to proceed with charging",
+        action: "pay_booking_fee",
+        message: `Please pay booking fee (${bookingFee.toLocaleString('vi-VN')} VND) to confirm`,
         confirm_endpoint: `/api/bookings/${booking._id}/confirm`,
       },
     });
