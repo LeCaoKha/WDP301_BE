@@ -136,11 +136,6 @@ exports.startSessionByQr = async (req, res) => {
     session.current_battery_percentage = initial_battery_percentage; // ✅ INIT CURRENT
     await session.save();
     
-    // Update charging point
-    await ChargingPoint.findByIdAndUpdate(session.chargingPoint_id._id, {
-      status: 'in_use',
-    });
-    
     // Update booking
     await Booking.findByIdAndUpdate(session.booking_id._id, {
       status: 'active',
