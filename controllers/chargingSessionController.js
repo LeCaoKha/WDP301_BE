@@ -2,6 +2,7 @@ const ChargingSession = require('../models/ChargingSession');
 const Booking = require('../models/Booking');
 const ChargingPoint = require('../models/ChargingPoint');
 const crypto = require('crypto');
+const Invoice = require('../models/Invoice');
 
 // ============== 1. GENERATE QR CODE =================
 exports.generateQRCode = async (req, res) => {
@@ -81,8 +82,32 @@ exports.generateQRCode = async (req, res) => {
 // ============== 2. START SESSION =================
 exports.startSessionByQr = async (req, res) => {
   try {
-    const { qr_token } = req.params;
-    const { initial_battery_percentage, target_battery_percentage } = req.body;
+    const { qr_token, initial_battery_percentage, target_battery_percentage } = req.body;
+    
+    const session = await ChargingSession.findOne({
+      qr_code_token: qr_token,
+      status: 'pending',
+    })
+      .populate('booking_id')
+      .populate('chargingPoint_id')
+      .populate('vehicle_id');
+    
+    if (!session) {
+      return res.status(404).json({
+        message: 'Invalid QR code or session already started/expired',
+      });
+    }
+    
+    // ✅ KIỂM TRA BOOKING PHẢI CONFIRMED
+    const booking = session.booking_id;
+    if (booking.status !== 'confirmed') {
+      return res.status(400).json({
+        message: 'Booking must be confirmed before starting session',
+        current_booking_status: booking.status,
+        required_status: 'confirmed',
+        confirm_endpoint: `/api/bookings/${booking._id}/confirm`,
+      });
+    }
     
     // Validate
     if (
@@ -100,31 +125,6 @@ exports.startSessionByQr = async (req, res) => {
     if (target <= initial_battery_percentage || target > 100) {
       return res.status(400).json({
         message: 'target_battery_percentage must be > initial and <= 100',
-      });
-    }
-    
-    // Find session
-    const session = await ChargingSession.findOne({
-      qr_code_token: qr_token,
-    })
-      .populate('booking_id')
-      .populate('chargingPoint_id')
-      .populate('vehicle_id');
-    
-    if (!session) {
-      return res.status(404).json({ message: 'Invalid QR code' });
-    }
-    
-    if (session.start_time) {
-      return res.status(400).json({
-        message: 'Session already started',
-        started_at: session.start_time,
-      });
-    }
-    
-    if (session.chargingPoint_id.status !== 'available') {
-      return res.status(400).json({
-        message: `Charging point is ${session.chargingPoint_id.status}`,
       });
     }
     
@@ -209,7 +209,7 @@ exports.startSessionByQr = async (req, res) => {
 exports.endSession = async (req, res) => {
   try {
     const { session_id } = req.params;
-    const { final_battery_percentage } = req.body; // OPTIONAL: user nhập % cuối
+    const { final_battery_percentage } = req.body;
     
     const session = await ChargingSession.findById(session_id)
       .populate('booking_id')
@@ -231,7 +231,6 @@ exports.endSession = async (req, res) => {
       return res.status(400).json({ message: 'Session has not started' });
     }
     
-    // ✅ Cho phép user nhập % pin cuối (nếu không có real-time update)
     if (final_battery_percentage !== undefined) {
       if (final_battery_percentage < session.initial_battery_percentage) {
         return res.status(400).json({
@@ -243,15 +242,71 @@ exports.endSession = async (req, res) => {
       session.current_battery_percentage = Math.min(100, final_battery_percentage);
     }
     
-    // End session
     session.end_time = new Date();
     session.status = 'completed';
     
-    // Calculate charges
     const calculation = await session.calculateCharges();
     await session.save();
     
-    // Update charging point & booking
+    // ✅ POPULATE STATION (không cần populate user_id)
+    const booking = await session.booking_id.populate('station_id');
+    const vehicle = session.vehicle_id;
+    const station = booking.station_id;
+    const chargingPoint = session.chargingPoint_id;
+    
+    // ✅ TẠO INVOICE
+    const target = session.target_battery_percentage || 100;
+    const final_battery = calculation.final_battery_percentage;
+    const target_reached = final_battery >= target;
+    
+    const invoice = await Invoice.create({
+      // References
+      session_id: session._id,
+      user_id: booking.user_id, // ✅ LẤY TRỰC TIẾP TỪ BOOKING (không cần populate)
+      booking_id: booking._id,
+      vehicle_id: vehicle._id,
+      station_id: station._id,
+      chargingPoint_id: chargingPoint._id,
+      
+      // Thời gian
+      start_time: session.start_time,
+      end_time: session.end_time,
+      charging_duration_minutes: calculation.charging_duration_minutes,
+      charging_duration_hours: parseFloat(calculation.charging_duration_hours),
+      charging_duration_formatted: calculation.charging_duration_formatted,
+      
+      // Battery
+      initial_battery_percentage: calculation.initial_battery_percentage,
+      final_battery_percentage: calculation.final_battery_percentage,
+      target_battery_percentage: target,
+      battery_charged_percentage: calculation.battery_charged_percentage,
+      target_reached: target_reached,
+      
+      // Energy
+      battery_capacity_kwh: calculation.battery_capacity_kwh,
+      power_capacity_kw: calculation.power_capacity_kw,
+      energy_delivered_kwh: parseFloat(calculation.actual_energy_delivered_kwh),
+      charging_efficiency: calculation.charging_efficiency,
+      calculation_method: calculation.calculation_method === 'Based on actual battery percentage' 
+        ? 'battery_based' 
+        : 'time_based',
+      
+      // Pricing
+      base_fee: calculation.base_fee,
+      price_per_kwh: calculation.price_per_kwh,
+      charging_fee: calculation.charging_fee,
+      total_amount: calculation.total_amount,
+      
+      // Additional Info
+      station_name: station.name,
+      station_address: station.address,
+      vehicle_plate_number: vehicle.plate_number,
+      vehicle_model: vehicle.model,
+      
+      payment_status: 'unpaid',
+      payment_method: 'vnpay',
+    });
+    
     await ChargingPoint.findByIdAndUpdate(session.chargingPoint_id._id, {
       status: 'available',
     });
@@ -260,16 +315,12 @@ exports.endSession = async (req, res) => {
       status: 'completed',
     });
     
-    // ✅ KIỂM TRA XEM CÓ ĐẠT TARGET KHÔNG
-    const target = session.target_battery_percentage || 100;
-    const final_battery = session.current_battery_percentage || session.initial_battery_percentage;
-    const target_reached = final_battery >= target;
-    
     res.status(200).json({
       message: 'Charging session ended successfully',
       target_status: target_reached 
-        ? `✅ Target ${target}% reached!` 
-        : `⚠️ Stopped early (Target: ${target}%, Actual: ${final_battery}%)`,
+        ? `✅ Đạt mục tiêu ${target}%` 
+        : `⚠️ Dừng sớm (Mục tiêu: ${target}%, Thực tế: ${final_battery}%)`,
+      
       session: {
         id: session._id,
         start_time: session.start_time,
@@ -277,14 +328,12 @@ exports.endSession = async (req, res) => {
         duration: calculation.charging_duration_formatted,
         duration_hours: calculation.charging_duration_hours + ' giờ',
         
-        // BATTERY INFO
         initial_battery: calculation.initial_battery_percentage + '%',
         final_battery: calculation.final_battery_percentage + '%',
         target_battery: target + '%',
         battery_charged: calculation.battery_charged_percentage + '%',
         target_reached,
         
-        // ENERGY INFO
         battery_capacity: calculation.battery_capacity_kwh + ' kWh',
         power_capacity: calculation.power_capacity_kw + ' kW',
         charging_efficiency: (calculation.charging_efficiency * 100) + '%',
@@ -297,6 +346,7 @@ exports.endSession = async (req, res) => {
         
         status: session.status,
       },
+      
       fee_calculation: {
         base_fee: calculation.base_fee,
         price_per_kwh: calculation.price_per_kwh,
@@ -304,18 +354,27 @@ exports.endSession = async (req, res) => {
         charging_fee: calculation.charging_fee,
         total_amount: calculation.total_amount,
         
-        // Formatted
         base_fee_formatted: calculation.base_fee.toLocaleString('vi-VN') + ' VND',
         charging_fee_formatted: calculation.charging_fee.toLocaleString('vi-VN') + ' VND',
         total_amount_formatted: calculation.total_amount.toLocaleString('vi-VN') + ' VND',
         
         breakdown: `${calculation.base_fee.toLocaleString('vi-VN')} VND (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} VND/kWh = ${calculation.total_amount.toLocaleString('vi-VN')} VND`,
       },
+      
+      invoice: {
+        invoice_id: invoice._id,
+        created_at: invoice.createdAt,
+        payment_status: invoice.payment_status,
+        payment_method: invoice.payment_method,
+        total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} VND`,
+      },
+      
       payment_data: {
         session_id: session._id,
-        user_id: session.booking_id.user_id,
-        vehicle_id: session.vehicle_id._id,
+        user_id: booking.user_id, // ✅ LẤY TRỰC TIẾP
+        vehicle_id: vehicle._id,
         amount: calculation.total_amount,
+        invoice_id: invoice._id,
       },
     });
   } catch (error) {

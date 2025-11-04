@@ -1,33 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const bookingController = require("../controllers/bookingController");
-const { authenticateToken } = require("../middleware/auth");
 
-// Booking CRUD routes (all require authentication)
-router.post("/", authenticateToken, bookingController.createBooking);
-router.get("/", authenticateToken, bookingController.getAllBookings);
-router.get("/me", authenticateToken, bookingController.getMyBookings);
-router.get("/:id", authenticateToken, bookingController.getBookingById);
-router.put("/:id", authenticateToken, bookingController.updateBookingById);
-router.delete("/:id", authenticateToken, bookingController.deleteBookingById);
-
-// Additional routes
-router.get(
-  "/user/:userId",
-  authenticateToken,
-  bookingController.getBookingsByUserId
-);
-router.get(
-  "/station/:stationId",
-  authenticateToken,
-  bookingController.getBookingsByStationId
-);
-router.patch("/:id/cancel", authenticateToken, bookingController.cancelBooking);
-router.patch(
-  "/:id/confirm",
-  authenticateToken,
-  bookingController.confirmBooking
-);
+// ✅ KIỂM TRA CÁC FUNCTION NÀY CÓ EXPORT TRONG bookingController.js CHƯA
+router.post("/", bookingController.createBooking);
+router.get("/", bookingController.getAllBookings);
+router.get("/:id", bookingController.getBookingById);
+router.put("/:id", bookingController.updateBookingById);
+router.delete("/:id", bookingController.deleteBookingById);
+router.get("/user/:userId", bookingController.getBookingsByUserId);
+router.get("/station/:stationId", bookingController.getBookingsByStationId);
+router.post("/:id/cancel", bookingController.cancelBooking);
+router.post("/:id/confirm", bookingController.confirmBooking);
 
 module.exports = router;
 
@@ -644,7 +628,7 @@ module.exports = router;
 /**
  * @swagger
  * /api/bookings/{id}/cancel:
- *   patch:
+ *   post:
  *     summary: Cancel booking
  *     tags: [Booking]
  *     security:
@@ -694,7 +678,7 @@ module.exports = router;
 /**
  * @swagger
  * /api/bookings/{id}/confirm:
- *   patch:
+ *   post:
  *     summary: Confirm booking
  *     tags: [Booking]
  *     security:
