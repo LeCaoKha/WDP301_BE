@@ -8,7 +8,11 @@ const paymentSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["subscription", "charging"],
+    enum: ["subscription", "charging", "base_fee"],
+  },
+  invoice_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Invoice",
   },
   vehicleSubscriptionIdId: String,
   vnp_TxnRef: String,
