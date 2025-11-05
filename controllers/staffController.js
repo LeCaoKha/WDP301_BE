@@ -16,19 +16,31 @@ exports.createReport = async (req, res) => {
 
     const images = [];
 
-    // Nếu có nhiều files upload, upload tất cả lên Cloudinary
+    // Kiểm tra xem có files được upload không
+    // Multer sẽ parse files vào req.files nếu field name là "images"
     if (req.files && req.files.length > 0) {
       try {
         // Upload từng ảnh lên Cloudinary
         for (const file of req.files) {
-          const result = await cloudinary.uploader.upload(file.path, {
-            folder: "staff_reports",
-            resource_type: "image",
+          // Với memoryStorage, file được lưu trong buffer thay vì path
+          // Upload buffer trực tiếp lên Cloudinary
+          const uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                folder: "staff_reports",
+                resource_type: "image",
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            );
+            stream.end(file.buffer);
           });
 
           images.push({
-            imageUrl: result.secure_url,
-            imagePublicId: result.public_id,
+            imageUrl: uploadResult.secure_url,
+            imagePublicId: uploadResult.public_id,
           });
         }
       } catch (uploadError) {
@@ -220,14 +232,24 @@ exports.updateReport = async (req, res) => {
 
         // Upload từng ảnh mới
         for (const file of req.files) {
-          const result = await cloudinary.uploader.upload(file.path, {
-            folder: "staff_reports",
-            resource_type: "image",
+          // Với memoryStorage, file được lưu trong buffer thay vì path
+          const uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                folder: "staff_reports",
+                resource_type: "image",
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            );
+            stream.end(file.buffer);
           });
 
           newImages.push({
-            imageUrl: result.secure_url,
-            imagePublicId: result.public_id,
+            imageUrl: uploadResult.secure_url,
+            imagePublicId: uploadResult.public_id,
           });
         }
 
