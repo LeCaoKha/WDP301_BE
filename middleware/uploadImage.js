@@ -1,19 +1,9 @@
 const multer = require("multer");
 const path = require("path");
 
-// Cấu hình lưu file tạm vào memory
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Thư mục tạm để lưu file
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
-    );
-  },
-});
+// Cấu hình lưu file vào memory (RAM) thay vì disk
+// Giúp tránh lỗi khi deploy lên server không có thư mục uploads/
+const storage = multer.memoryStorage();
 
 // Kiểm tra loại file
 const fileFilter = (req, file, cb) => {
@@ -31,13 +21,15 @@ const fileFilter = (req, file, cb) => {
 };
 
 // Upload nhiều files (tối đa 10 ảnh)
-const uploadMultiple = multer({
+const multerConfig = multer({
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // Giới hạn 5MB mỗi file
   },
   fileFilter: fileFilter,
-}).array("images", 10); // Field name là "images", tối đa 10 files
+});
+
+const uploadMultiple = multerConfig.array("images", 10); // Field name là "images", tối đa 10 files
 
 // Middleware xử lý lỗi upload
 const handleUploadError = (err, req, res, next) => {
@@ -52,8 +44,14 @@ const handleUploadError = (err, req, res, next) => {
         message: "Quá nhiều file. Tối đa 10 ảnh mỗi lần upload",
       });
     }
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({
+        message: `Field name không đúng. Phải là "images", nhận được: ${err.field}`,
+      });
+    }
     return res.status(400).json({
       message: err.message,
+      code: err.code,
     });
   } else if (err) {
     return res.status(400).json({
