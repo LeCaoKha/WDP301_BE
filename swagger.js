@@ -395,6 +395,11 @@ function buildSwaggerSpec(baseUrl) {
           name: "ChargingSession",
           description: "Charging session and QR code endpoints",
         },
+        {
+          name: "Payment",
+          description:
+            "Payment processing with VNPay for subscriptions, charging fees, and base fees",
+        },
       ],
     },
     apis: ["./routes/*.js"],

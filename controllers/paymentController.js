@@ -7,6 +7,7 @@ const {
 } = require("vnpay");
 const crypto = require("crypto");
 const axios = require("axios");
+const mongoose = require("mongoose");
 const Payment = require("../models/Payment");
 const Vehicle = require("../models/Vehicle");
 const VehicleSubscription = require("../models/VehicleSubscription");
@@ -17,6 +18,153 @@ const querystring = require("querystring");
 const { findById } = require("../models/Vehicle");
 const tmnCode = "MTZVDR2T";
 const secureSecret = "C70JGHY1X7BQ2B98HO2S7X9BNLQ4JGDX";
+
+// Test user ID cố định cho test payments (không cần đăng nhập)
+// Sử dụng một ObjectId hợp lệ để fix cứng
+const TEST_USER_ID = new mongoose.Types.ObjectId("000000000000000000000000");
+
+// Payment Test - Simple payment API that only requires amount
+exports.paymentTest = async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        message: "Amount is required and must be greater than 0",
+      });
+    }
+
+    const vnpay = new VNPay({
+      tmnCode,
+      secureSecret,
+      vnpayHost: "https://sandbox.vnpayment.vn",
+      testMode: true,
+      hashAlgorithm: "SHA512",
+      loggerFn: ignoreLogger,
+    });
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const txnRef = Date.now().toString();
+
+    const vnpayResponse = await vnpay.buildPaymentUrl({
+      vnp_Amount: amount,
+      vnp_IpAddr: req.ip || "127.0.0.1",
+      vnp_TxnRef: txnRef,
+      vnp_OrderInfo: `Payment Test - Amount: ${amount}`,
+      vnp_OrderType: ProductCode.Other,
+      vnp_ReturnUrl: `${process.env.VNPAY_RETURN_URL}/api/payment/payment-test-return/${txnRef}`,
+      vnp_Locale: VnpLocale.VN,
+      vnp_CreateDate: dateFormat(new Date()),
+      vnp_ExpireDate: dateFormat(tomorrow),
+    });
+
+    return res.status(200).json({
+      message: "Payment URL generated successfully",
+      paymentUrl: vnpayResponse,
+      txnRef: txnRef,
+      amount: amount,
+    });
+  } catch (error) {
+    console.error("Error in paymentTest:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// Payment Test Return - Handle VNPay callback for payment test
+exports.paymentTestReturn = async (req, res) => {
+  try {
+    const txnRef = req.params.txnRef;
+
+    const rawUrl = req.originalUrl || req.url;
+    const parsedUrl = url.parse(rawUrl);
+    const rawQuery = parsedUrl.query || "";
+
+    // Parse query parameters
+    const queryParams = rawQuery
+      .split("&")
+      .filter((p) => p && p.includes("="))
+      .reduce((acc, param) => {
+        const idx = param.indexOf("=");
+        const key = param.substring(0, idx);
+        const value = param.substring(idx + 1);
+        acc[key] = value;
+        return acc;
+      }, {});
+
+    const secureHash = queryParams["vnp_SecureHash"];
+    delete queryParams["vnp_SecureHash"];
+    delete queryParams["vnp_SecureHashType"];
+
+    const sortedKeys = Object.keys(queryParams).sort();
+    const signData = sortedKeys
+      .map((key) => `${key}=${queryParams[key]}`)
+      .join("&");
+
+    const computedHash = crypto
+      .createHmac("sha512", secureSecret)
+      .update(signData)
+      .digest("hex");
+
+    // Verify signature and check payment success
+    if (
+      computedHash.toLowerCase() === String(secureHash || "").toLowerCase() &&
+      queryParams.vnp_ResponseCode === "00"
+    ) {
+      // Payment successful - Save payment record
+      // Sử dụng TEST_USER_ID cố định cho test payments
+      const newPayment = new Payment({
+        madeBy: TEST_USER_ID, // Fixed test user ID
+        type: "charging", // Using existing type
+        vnp_TxnRef: queryParams.vnp_TxnRef,
+        vnp_Amount: Number(queryParams.vnp_Amount) / 100,
+        vnp_OrderInfo: decodeURIComponent(queryParams.vnp_OrderInfo || ""),
+        vnp_TransactionNo: queryParams.vnp_TransactionNo,
+        vnp_BankCode: queryParams.vnp_BankCode,
+        vnp_CardType: queryParams.vnp_CardType,
+        vnp_PayDate: queryParams.vnp_PayDate,
+        vnp_ResponseCode: queryParams.vnp_ResponseCode,
+        vnp_TransactionStatus: queryParams.vnp_TransactionStatus,
+        vnp_SecureHash: secureHash,
+      });
+      await newPayment.save();
+
+      // Redirect đến trang HTML thông báo thanh toán thành công
+      const baseUrl =
+        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+      return res.redirect(
+        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+          queryParams.vnp_TransactionNo
+        }&amount=${Number(queryParams.vnp_Amount) / 100}`
+      );
+    }
+
+    // Payment failed or signature mismatch - redirect đến trang HTML thông báo thất bại
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+        queryParams.vnp_ResponseCode || ""
+      }&responseMessage=${encodeURIComponent(
+        queryParams.vnp_ResponseMessage || "Payment failed"
+      )}`
+    );
+  } catch (error) {
+    console.error("Error in paymentTestReturn:", error);
+    // Redirect đến trang HTML thông báo lỗi khi có lỗi xử lý
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+        error.message || "Error processing payment return"
+      )}`
+    );
+  }
+};
 
 exports.payForSubscription = async (req, res) => {
   try {
@@ -72,7 +220,7 @@ exports.payForSubscription = async (req, res) => {
 
 exports.payForSubscriptionReturn = async (req, res) => {
   try {
-    const txnRef = req.params.vehicleSubscriptionId; // txnRef truyền ở URL
+    const txnRef = req.params.txnRef; // txnRef từ URL parameter
 
     const rawUrl = req.originalUrl || req.url;
     const parsedUrl = url.parse(rawUrl);
@@ -144,8 +292,13 @@ exports.payForSubscriptionReturn = async (req, res) => {
       const subscriptionPlan = await SubscriptionPlan.findById(subscription_id);
       if (!subscriptionPlan) {
         console.error("Subscription plan not found");
+        const baseUrl =
+          process.env.VNPAY_RETURN_URL ||
+          req.protocol + "://" + req.get("host");
         return res.redirect(
-          `evchargingapp://payment-failed?txnRef=${txnRef}&error=plan_not_found`
+          `${baseUrl}/payment-failed.html?status=error&txnRef=${txnRef}&message=${encodeURIComponent(
+            "Subscription plan not found"
+          )}`
         );
       }
 
@@ -190,18 +343,39 @@ exports.payForSubscriptionReturn = async (req, res) => {
         "✅ Đã tạo VehicleSubscription mới sau thanh toán thành công"
       );
 
+      // Redirect đến trang HTML thông báo thanh toán thành công
+      const baseUrl =
+        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
       return res.redirect(
-        // `http://localhost:5173/vnpay/return?status=success&vehicleSubscriptionId=${vehicleSubscription._id}`
-        `evchargingapp://vnpay/return?status=success&vehicleSubscriptionId=${vehicleSubscription._id}`
+        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+          queryParams.vnp_TransactionNo
+        }&amount=${
+          Number(queryParams.vnp_Amount) / 100
+        }&vehicleSubscriptionId=${vehicleSubscription._id}`
       );
     }
 
-    // ❌ Hash sai hoặc không thành công
+    // ❌ Hash sai hoặc không thành công - redirect đến trang HTML thông báo thất bại
     console.warn("VNPay signature mismatch or failed payment");
-    return res.redirect(`evchargingapp://payment-failed?txnRef=${txnRef}`);
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+        queryParams.vnp_ResponseCode || ""
+      }&responseMessage=${encodeURIComponent(
+        queryParams.vnp_ResponseMessage || "Payment failed"
+      )}`
+    );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay:", error);
-    return res.status(500).json({ message: "Lỗi xử lý kết quả thanh toán" });
+    // Redirect đến trang HTML thông báo lỗi
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+        error.message || "Error processing payment return"
+      )}`
+    );
   }
 };
 
@@ -323,17 +497,37 @@ exports.payForChargingReturn = async (req, res) => {
         "✅ Đã tạo Payment mới cho charging sau thanh toán thành công"
       );
 
+      // Redirect đến trang HTML thông báo thanh toán thành công
+      const baseUrl =
+        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
       return res.redirect(
-        `evchargingapp://vnpay/return?status=success&invoiceId=${invoiceId}&txnRef=${txnRef}`
+        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+          queryParams.vnp_TransactionNo
+        }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceId=${invoiceId}`
       );
     }
 
-    // ❌ Hash sai hoặc không thành công
+    // ❌ Hash sai hoặc không thành công - redirect đến trang HTML thông báo thất bại
     console.warn("VNPay signature mismatch or failed payment");
-    return res.redirect(`evchargingapp://payment-failed?txnRef=${txnRef}`);
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+        queryParams.vnp_ResponseCode || ""
+      }&responseMessage=${encodeURIComponent(
+        queryParams.vnp_ResponseMessage || "Payment failed"
+      )}`
+    );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay cho charging:", error);
-    return res.status(500).json({ message: "Lỗi xử lý kết quả thanh toán" });
+    // Redirect đến trang HTML thông báo lỗi
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+        error.message || "Error processing payment return"
+      )}`
+    );
   }
 };
 
@@ -511,18 +705,38 @@ exports.payForBaseFeeReturn = async (req, res) => {
         }
       }
 
+      // Redirect đến trang HTML thông báo thanh toán thành công
+      const baseUrl =
+        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
       return res.redirect(
-        `evchargingapp://vnpay/return?status=success&type=base_fee&txnRef=${txnRef}${
+        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+          queryParams.vnp_TransactionNo
+        }&amount=${Number(queryParams.vnp_Amount) / 100}&type=base_fee${
           booking_id ? `&booking_id=${booking_id}` : ""
         }`
       );
     }
 
-    // ❌ Hash sai hoặc không thành công
+    // ❌ Hash sai hoặc không thành công - redirect đến trang HTML thông báo thất bại
     console.warn("VNPay signature mismatch or failed payment");
-    return res.redirect(`evchargingapp://payment-failed?txnRef=${txnRef}`);
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+        queryParams.vnp_ResponseCode || ""
+      }&responseMessage=${encodeURIComponent(
+        queryParams.vnp_ResponseMessage || "Payment failed"
+      )}`
+    );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay cho base_fee:", error);
-    return res.status(500).json({ message: "Lỗi xử lý kết quả thanh toán" });
+    // Redirect đến trang HTML thông báo lỗi
+    const baseUrl =
+      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    return res.redirect(
+      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+        error.message || "Error processing payment return"
+      )}`
+    );
   }
 };
