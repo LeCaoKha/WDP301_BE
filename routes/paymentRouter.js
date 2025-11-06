@@ -6,15 +6,16 @@ const {
   payForChargingReturn,
   payForBaseFee,
   payForBaseFeeReturn,
+  paymentTest,
+  paymentTestReturn,
 } = require("../controllers/paymentController");
 
 const router = express.Router();
 
+router.post("/payment-test", paymentTest);
+router.get("/payment-test-return/:txnRef", paymentTestReturn);
 router.post("/pay-for-subscription", payForSubscription);
-router.get(
-  "/pay-for-subscription-return/:vehicleSubscriptionId",
-  payForSubscriptionReturn
-);
+router.get("/pay-for-subscription-return/:txnRef", payForSubscriptionReturn);
 router.post("/pay-for-charging", payForCharging);
 router.get("/pay-for-charging-return/:txnRef", payForChargingReturn);
 router.post("/pay-for-base-fee", payForBaseFee);
@@ -27,6 +28,60 @@ module.exports = router;
  * tags:
  *   name: Payment
  *   description: Payment processing with VNPay for subscriptions, charging fees, and base fees
+ */
+
+/**
+ * @swagger
+ * /api/payment/payment-test:
+ *   post:
+ *     summary: Payment test - Simple payment API that only requires amount (No authentication required)
+ *     tags: [Payment]
+ *     security: []  # No authentication required
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: Payment amount in VND
+ *                 example: 100000
+ *     responses:
+ *       200:
+ *         description: Payment URL generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Payment URL generated successfully"
+ *                 paymentUrl:
+ *                   type: string
+ *                   description: VNPay payment URL
+ *                 txnRef:
+ *                   type: string
+ *                   description: Transaction reference number
+ *                 amount:
+ *                   type: number
+ *                   example: 100000
+ *       400:
+ *         description: Invalid amount
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Amount is required and must be greater than 0"
+ *       500:
+ *         description: Internal server error
  */
 
 /**
@@ -142,33 +197,6 @@ module.exports = router;
 
 /**
  * @swagger
- * /api/payment/pay-for-base-fee-return/{txnRef}:
- *   get:
- *     summary: VNPay callback URL for base fee payment return
- *     description: This endpoint is called by VNPay after payment completion. If booking_id was provided, it will automatically call the booking confirmation API.
- *     tags: [Payment]
- *     parameters:
- *       - in: path
- *         name: txnRef
- *         required: true
- *         schema:
- *           type: string
- *         description: Transaction reference number
- *     responses:
- *       302:
- *         description: Redirects to mobile app deep link
- *         headers:
- *           Location:
- *             schema:
- *               type: string
- *             description: Deep link URL for mobile app
- *             example: "evchargingapp://vnpay/return?status=success&type=base_fee&txnRef=1234567890&booking_id=507f1f77bcf86cd799439014"
- *       500:
- *         description: Internal server error
- */
-
-/**
- * @swagger
  * /api/payment/pay-for-charging:
  *   post:
  *     summary: Create VNPay payment URL for charging fee payment
@@ -215,116 +243,6 @@ module.exports = router;
  *                 message:
  *                   type: string
  *                   example: "Missing required fields: invoiceId, amount, userId"
- *       500:
- *         description: Internal server error
- */
-
-/**
- * @swagger
- * /api/payment/pay-for-charging-return/{txnRef}:
- *   get:
- *     summary: VNPay callback URL for charging fee payment return
- *     description: This endpoint is called by VNPay after payment completion for charging fees.
- *     tags: [Payment]
- *     parameters:
- *       - in: path
- *         name: txnRef
- *         required: true
- *         schema:
- *           type: string
- *         description: Transaction reference number
- *     responses:
- *       302:
- *         description: Redirects to mobile app deep link
- *         headers:
- *           Location:
- *             schema:
- *               type: string
- *             description: Deep link URL for mobile app
- *             example: "evchargingapp://vnpay/return?status=success&invoiceId=507f1f77bcf86cd799439015&txnRef=1234567890"
- *       500:
- *         description: Internal server error
- */
-
-/**
- * @swagger
- * /api/payment/pay-for-charging:
- *   post:
- *     summary: Create VNPay payment URL for charging invoice payment
- *     tags: [Payment]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - invoiceId
- *               - amount
- *               - userId
- *             properties:
- *               invoiceId:
- *                 type: string
- *                 description: ID of the invoice to be paid
- *                 example: "507f1f77bcf86cd799439011"
- *               amount:
- *                 type: number
- *                 description: Payment amount in VND (will be multiplied by 100 for VNPay)
- *                 example: 100000
- *               userId:
- *                 type: string
- *                 description: ID of the user making the payment
- *                 example: "507f1f77bcf86cd799439013"
- *     responses:
- *       201:
- *         description: VNPay payment URL created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: string
- *               description: VNPay payment URL (redirect user to this URL)
- *               example: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?..."
- *       400:
- *         description: Missing required fields (invoiceId, amount, userId)
- *       500:
- *         description: Internal server error
- */
-
-/**
- * @swagger
- * /api/payment/pay-for-base-fee:
- *   post:
- *     summary: Create VNPay payment URL for base fee payment
- *     tags: [Payment]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - amount
- *               - userId
- *             properties:
- *               amount:
- *                 type: number
- *                 description: Payment amount in VND (will be multiplied by 100 for VNPay)
- *                 example: 50000
- *               userId:
- *                 type: string
- *                 description: ID of the user making the payment
- *                 example: "507f1f77bcf86cd799439013"
- *     responses:
- *       201:
- *         description: VNPay payment URL created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: string
- *               description: VNPay payment URL (redirect user to this URL)
- *               example: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?..."
- *       400:
- *         description: Missing required fields (amount, userId)
  *       500:
  *         description: Internal server error
  */
