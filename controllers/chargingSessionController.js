@@ -189,8 +189,8 @@ exports.startSessionByQr = async (req, res) => {
           battery_capacity: vehicle.batteryCapacity ? vehicle.batteryCapacity + ' kWh' : 'N/A',
         },
         pricing: {
-          base_fee: session.base_fee.toLocaleString('vi-VN') + ' VND',
-          price_per_kwh: session.price_per_kwh.toLocaleString('vi-VN') + ' VND/kWh',
+          base_fee: session.base_fee.toLocaleString('vi-VN') + ' đ',
+          price_per_kwh: session.price_per_kwh.toLocaleString('vi-VN') + ' đ/kWh',
         },
         estimated_time: estimated_time_info,
       },
@@ -248,21 +248,33 @@ exports.endSession = async (req, res) => {
     const calculation = await session.calculateCharges();
     await session.save();
     
-    // ✅ POPULATE STATION (không cần populate user_id)
     const booking = await session.booking_id.populate('station_id');
     const vehicle = session.vehicle_id;
     const station = booking.station_id;
     const chargingPoint = session.chargingPoint_id;
     
-    // ✅ TẠO INVOICE
     const target = session.target_battery_percentage || 100;
     const final_battery = calculation.final_battery_percentage;
     const target_reached = final_battery >= target;
     
+    // ✅ TÍNH THỜI GIAN CHÍNH XÁC (GIÂY)
+    const durationMs = session.end_time - session.start_time;
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    // ✅ FORMAT DURATION
+    let durationFormatted = '';
+    if (hours > 0) durationFormatted += `${hours} giờ `;
+    if (minutes > 0) durationFormatted += `${minutes} phút `;
+    if (seconds > 0 || totalSeconds === 0) durationFormatted += `${seconds} giây`;
+    durationFormatted = durationFormatted.trim();
+    
     const invoice = await Invoice.create({
       // References
       session_id: session._id,
-      user_id: booking.user_id, // ✅ LẤY TRỰC TIẾP TỪ BOOKING (không cần populate)
+      user_id: booking.user_id,
       booking_id: booking._id,
       vehicle_id: vehicle._id,
       station_id: station._id,
@@ -271,9 +283,10 @@ exports.endSession = async (req, res) => {
       // Thời gian
       start_time: session.start_time,
       end_time: session.end_time,
+      charging_duration_seconds: totalSeconds, // ✅ TỔNG GIÂY
       charging_duration_minutes: calculation.charging_duration_minutes,
       charging_duration_hours: parseFloat(calculation.charging_duration_hours),
-      charging_duration_formatted: calculation.charging_duration_formatted,
+      charging_duration_formatted: durationFormatted, // ✅ "1 giờ 30 phút 45 giây"
       
       // Battery
       initial_battery_percentage: calculation.initial_battery_percentage,
@@ -325,7 +338,8 @@ exports.endSession = async (req, res) => {
         id: session._id,
         start_time: session.start_time,
         end_time: session.end_time,
-        duration: calculation.charging_duration_formatted,
+        duration: durationFormatted, // ✅ "1 giờ 30 phút 45 giây"
+        duration_seconds: totalSeconds, // ✅ TỔNG GIÂY
         duration_hours: calculation.charging_duration_hours + ' giờ',
         
         initial_battery: calculation.initial_battery_percentage + '%',
@@ -354,11 +368,11 @@ exports.endSession = async (req, res) => {
         charging_fee: calculation.charging_fee,
         total_amount: calculation.total_amount,
         
-        base_fee_formatted: calculation.base_fee.toLocaleString('vi-VN') + ' VND',
-        charging_fee_formatted: calculation.charging_fee.toLocaleString('vi-VN') + ' VND',
-        total_amount_formatted: calculation.total_amount.toLocaleString('vi-VN') + ' VND',
+        base_fee_formatted: calculation.base_fee.toLocaleString('vi-VN') + ' đ',
+        charging_fee_formatted: calculation.charging_fee.toLocaleString('vi-VN') + ' đ',
+        total_amount_formatted: calculation.total_amount.toLocaleString('vi-VN') + ' đ',
         
-        breakdown: `${calculation.base_fee.toLocaleString('vi-VN')} VND (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} VND/kWh = ${calculation.total_amount.toLocaleString('vi-VN')} VND`,
+        breakdown: `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${calculation.total_amount.toLocaleString('vi-VN')} đ`,
       },
       
       invoice: {
@@ -366,12 +380,12 @@ exports.endSession = async (req, res) => {
         created_at: invoice.createdAt,
         payment_status: invoice.payment_status,
         payment_method: invoice.payment_method,
-        total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} VND`,
+        total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
       },
       
       payment_data: {
         session_id: session._id,
-        user_id: booking.user_id, // ✅ LẤY TRỰC TIẾP
+        user_id: booking.user_id,
         vehicle_id: vehicle._id,
         amount: calculation.total_amount,
         invoice_id: invoice._id,
@@ -535,7 +549,7 @@ exports.updateBatteryLevel = async (req, res) => {
           id: session._id,
           battery_charged: `${session.initial_battery_percentage}% → 100%`,
           duration: calculation.charging_duration_formatted,
-          total_amount: Math.round(calculation.total_amount).toLocaleString('vi-VN') + ' VND',
+          total_amount: Math.round(calculation.total_amount).toLocaleString('vi-VN') + ' đ',
         },
         calculation,
       });

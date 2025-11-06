@@ -188,13 +188,13 @@ exports.createBooking = async (req, res) => {
         // ✅ PHÍ ĐẶT CHỖ THEO GIỜ
         booking_fee: {
           base_fee_per_hour: baseFeePerHour,
-          base_fee_per_hour_formatted: `${baseFeePerHour.toLocaleString('vi-VN')} VND/giờ`,
+          base_fee_per_hour_formatted: `${baseFeePerHour.toLocaleString('vi-VN')} đ/giờ`,
           
           booking_hours: bookingHours,
           booking_fee: bookingFee,
-          booking_fee_formatted: `${bookingFee.toLocaleString('vi-VN')} VND`,
+          booking_fee_formatted: `${bookingFee.toLocaleString('vi-VN')} đ`,
           
-          calculation: `${bookingHours} giờ × ${baseFeePerHour.toLocaleString('vi-VN')} VND/giờ = ${bookingFee.toLocaleString('vi-VN')} VND`,
+          calculation: `${bookingHours} giờ × ${baseFeePerHour.toLocaleString('vi-VN')} đ/giờ = ${bookingFee.toLocaleString('vi-VN')} đ`,
           
           note: "Booking fee is calculated based on reserved time slot. Actual charging fee depends on energy usage.",
         },
@@ -202,7 +202,7 @@ exports.createBooking = async (req, res) => {
         // ✅ GIÁ ĐIỆN (CHO THAM KHẢO)
         charging_info: {
           price_per_kwh: populatedBooking.station_id.price_per_kwh || 3000,
-          price_per_kwh_formatted: `${(populatedBooking.station_id.price_per_kwh || 3000).toLocaleString('vi-VN')} VND/kWh`,
+          price_per_kwh_formatted: `${(populatedBooking.station_id.price_per_kwh || 3000).toLocaleString('vi-VN')} đ/kWh`,
           
           note: "This is the energy price. Total cost = Booking fee + Energy fee",
         },
@@ -211,7 +211,7 @@ exports.createBooking = async (req, res) => {
       // ✅ PAYMENT INFO
       payment_required: {
         booking_fee: bookingFee,
-        booking_fee_formatted: `${bookingFee.toLocaleString('vi-VN')} VND`,
+        booking_fee_formatted: `${bookingFee.toLocaleString('vi-VN')} đ`,
         description: `Phí đặt chỗ ${bookingHours} giờ tại ${populatedBooking.station_id.name}`,
         payment_method: "vnpay",
       },
@@ -219,7 +219,7 @@ exports.createBooking = async (req, res) => {
       // ✅ NEXT STEP
       next_step: {
         action: "pay_booking_fee",
-        message: `Please pay booking fee (${bookingFee.toLocaleString('vi-VN')} VND) to confirm`,
+        message: `Please pay booking fee (${bookingFee.toLocaleString('vi-VN')} đ) to confirm`,
         confirm_endpoint: `/api/bookings/${booking._id}/confirm`,
       },
     });
@@ -411,8 +411,8 @@ exports.confirmBooking = async (req, res) => {
         },
         
         pricing: {
-          base_fee: `${updatedBooking.station_id.base_fee.toLocaleString('vi-VN')} VND`,
-          price_per_kwh: `${updatedBooking.station_id.price_per_kwh.toLocaleString('vi-VN')} VND/kWh`,
+          base_fee: `${updatedBooking.station_id.base_fee.toLocaleString('vi-VN')} đ`,
+          price_per_kwh: `${updatedBooking.station_id.price_per_kwh.toLocaleString('vi-VN')} đ/kWh`,
         },
       },
       

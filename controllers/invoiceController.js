@@ -44,12 +44,12 @@ exports.getAllInvoices = async (req, res) => {
       station: inv.station_name,
       address: inv.station_address,
       vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
-      
+      start_time: inv.start_time,
+      end_time: inv.end_time,
       duration: inv.charging_duration_formatted,
       energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
       battery_charged: `${inv.battery_charged_percentage}%`,
-      
-      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} VND`,
+      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} đ`,
       payment_status: inv.payment_status,
       payment_method: inv.payment_method,
     }));
@@ -118,7 +118,7 @@ exports.getUserInvoices = async (req, res) => {
       energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
       battery_charged: `${inv.battery_charged_percentage}%`,
       
-      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} VND`,
+      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} đ`,
       payment_status: inv.payment_status,
       payment_method: inv.payment_method,
     }));
@@ -129,12 +129,12 @@ exports.getUserInvoices = async (req, res) => {
         total_invoices: total,
         unpaid: {
           count: unpaid.count,
-          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} VND`,
+          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`,
           total_energy: `${unpaid.total_energy.toFixed(2)} kWh`,
         },
         paid: {
           count: paid.count,
-          total_amount: `${paid.total_amount.toLocaleString('vi-VN')} VND`,
+          total_amount: `${paid.total_amount.toLocaleString('vi-VN')} đ`,
           total_energy: `${paid.total_energy.toFixed(2)} kWh`,
         },
       },
@@ -194,13 +194,13 @@ exports.getInvoiceDetail = async (req, res) => {
       },
       pricing: {
         base_fee: invoice.base_fee,
-        base_fee_formatted: `${invoice.base_fee.toLocaleString('vi-VN')} VND`,
+        base_fee_formatted: `${invoice.base_fee.toLocaleString('vi-VN')} đ`,
         price_per_kwh: invoice.price_per_kwh,
-        price_per_kwh_formatted: `${invoice.price_per_kwh.toLocaleString('vi-VN')} VND/kWh`,
+        price_per_kwh_formatted: `${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh`,
         charging_fee: invoice.charging_fee,
-        charging_fee_formatted: `${invoice.charging_fee.toLocaleString('vi-VN')} VND`,
+        charging_fee_formatted: `${invoice.charging_fee.toLocaleString('vi-VN')} đ`,
         total_amount: invoice.total_amount,
-        total_amount_formatted: `${invoice.total_amount.toLocaleString('vi-VN')} VND`,
+        total_amount_formatted: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
         breakdown: invoice.formatted.breakdown,
       },
       payment: {
@@ -264,7 +264,7 @@ exports.updatePaymentStatus = async (req, res) => {
         payment_method: invoice.payment_method,
         payment_date: invoice.payment_date,
         transaction_id: invoice.transaction_id,
-        total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} VND`,
+        total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
       },
     });
   } catch (error) {
@@ -291,7 +291,7 @@ exports.getUnpaidInvoices = async (req, res) => {
       station: inv.station_name,
       vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
       energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
-      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} VND`,
+      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} đ`,
       duration: inv.charging_duration_formatted,
     }));
     
@@ -300,7 +300,7 @@ exports.getUnpaidInvoices = async (req, res) => {
       summary: {
         count: invoices.length,
         total_unpaid: totalUnpaid,
-        total_unpaid_formatted: `${totalUnpaid.toLocaleString('vi-VN')} VND`,
+        total_unpaid_formatted: `${totalUnpaid.toLocaleString('vi-VN')} đ`,
       },
     });
   } catch (error) {
