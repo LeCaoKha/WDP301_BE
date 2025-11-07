@@ -81,21 +81,29 @@ const invoiceController = require('../controllers/invoiceController');
  * @swagger
  * /api/invoices:
  *   get:
- *     summary: Get all invoices (Admin)
+ *     summary: Get all invoices (Admin only)
+ *     description: |
+ *       Admin endpoint to retrieve all invoices with pagination and filtering options.
+ *       Returns formatted invoice data with station, vehicle, and payment information.
  *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
- *         description: Page number
+ *           minimum: 1
+ *         description: Page number for pagination
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           default: 10
- *         description: Items per page
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of items per page
  *       - in: query
  *         name: payment_status
  *         schema:
@@ -106,15 +114,15 @@ const invoiceController = require('../controllers/invoiceController');
  *         name: user_id
  *         schema:
  *           type: string
- *         description: Filter by user ID
+ *         description: Filter by user/driver ID
  *       - in: query
  *         name: station_id
  *         schema:
  *           type: string
- *         description: Filter by station ID
+ *         description: Filter by charging station ID
  *     responses:
  *       200:
- *         description: List of invoices with statistics
+ *         description: Successfully retrieved invoices with statistics
  *         content:
  *           application/json:
  *             schema:
@@ -123,29 +131,73 @@ const invoiceController = require('../controllers/invoiceController');
  *                 invoices:
  *                   type: array
  *                   items:
- *                     $ref: '#/components/schemas/Invoice'
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         example: "507f1f77bcf86cd799439011"
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       station:
+ *                         type: string
+ *                         example: "EV Station Downtown"
+ *                       address:
+ *                         type: string
+ *                         example: "123 Main St, District 1"
+ *                       vehicle:
+ *                         type: string
+ *                         example: "Tesla Model 3 - 29A-12345"
+ *                       start_time:
+ *                         type: string
+ *                         format: date-time
+ *                       end_time:
+ *                         type: string
+ *                         format: date-time
+ *                       duration:
+ *                         type: string
+ *                         example: "1 giờ 30 phút"
+ *                       duration_seconds:
+ *                         type: number
+ *                         example: 5400
+ *                       energy_delivered:
+ *                         type: string
+ *                         example: "36.50 kWh"
+ *                       battery_charged:
+ *                         type: string
+ *                         example: "60%"
+ *                       total_amount:
+ *                         type: string
+ *                         example: "122,500 đ"
+ *                       payment_status:
+ *                         type: string
+ *                         enum: [unpaid, paid, refunded, cancelled]
+ *                       payment_method:
+ *                         type: string
+ *                         example: "vnpay"
  *                 statistics:
  *                   type: object
  *                   properties:
  *                     total_revenue:
  *                       type: number
+ *                       example: 15000000
+ *                       description: Total revenue from all invoices
  *                     total_energy:
  *                       type: number
+ *                       example: 5000
+ *                       description: Total energy delivered (kWh)
  *                     count:
  *                       type: number
+ *                       example: 150
+ *                       description: Total number of invoices
  *                 pagination:
- *                   type: object
- *                   properties:
- *                     currentPage:
- *                       type: integer
- *                     totalPages:
- *                       type: integer
- *                     totalItems:
- *                       type: integer
- *                     itemsPerPage:
- *                       type: integer
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Forbidden - Admin access required
  *       500:
- *         description: Server error
+ *         $ref: '#/components/responses/InternalServerError'
  */
 router.get('/', invoiceController.getAllInvoices);
 
@@ -154,33 +206,46 @@ router.get('/', invoiceController.getAllInvoices);
  * /api/invoices/user/{user_id}:
  *   get:
  *     summary: Get user's invoices
- *     description: Get all invoices for a user. Note - Unpaid invoices show only charging fee (base fee already paid at booking), paid invoices show total amount.
+ *     description: |
+ *       Get all invoices for a specific user/driver with summary statistics.
+ *       **Important:** 
+ *       - Unpaid invoices show only charging_fee (base_fee was already paid at booking confirmation)
+ *       - Paid invoices show total_amount (base_fee + charging_fee)
  *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: user_id
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID
+ *         description: User/Driver ID
+ *         example: "507f1f77bcf86cd799439011"
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
+ *           minimum: 1
+ *         description: Page number
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Items per page
  *       - in: query
  *         name: payment_status
  *         schema:
  *           type: string
  *           enum: [unpaid, paid, refunded, cancelled]
+ *         description: Filter by payment status
  *     responses:
  *       200:
- *         description: User's invoices with summary
+ *         description: User's invoices with payment summary
  *         content:
  *           application/json:
  *             schema:
@@ -195,8 +260,10 @@ router.get('/', invoiceController.getAllInvoices);
  *                         type: string
  *                       created_at:
  *                         type: string
+ *                         format: date-time
  *                       station:
  *                         type: string
+ *                         example: "EV Station Downtown"
  *                       address:
  *                         type: string
  *                       vehicle:
@@ -204,8 +271,9 @@ router.get('/', invoiceController.getAllInvoices);
  *                         example: "Tesla Model 3 - 29A-12345"
  *                       duration:
  *                         type: string
- *                         description: Human-readable charging duration with seconds
- *                         example: "1 giờ 30 phút 45 giây"
+ *                         example: "1 giờ 30 phút"
+ *                       duration_seconds:
+ *                         type: number
  *                       energy_delivered:
  *                         type: string
  *                         example: "36.50 kWh"
@@ -214,13 +282,14 @@ router.get('/', invoiceController.getAllInvoices);
  *                         example: "60%"
  *                       total_amount:
  *                         type: string
- *                         description: For unpaid - shows charging fee only (base fee already paid). For paid - shows total amount.
+ *                         description: "Unpaid: charging fee only | Paid: total amount"
  *                         example: "109,500 đ"
  *                       payment_status:
  *                         type: string
  *                         enum: [unpaid, paid, refunded, cancelled]
  *                       payment_method:
  *                         type: string
+ *                         example: "vnpay"
  *                 summary:
  *                   type: object
  *                   properties:
@@ -235,8 +304,8 @@ router.get('/', invoiceController.getAllInvoices);
  *                           example: 3
  *                         total_amount:
  *                           type: string
- *                           description: Total charging fee only (base fee already paid at booking)
  *                           example: "328,500 đ"
+ *                           description: "Charging fee only (base fee already paid)"
  *                         total_energy:
  *                           type: string
  *                           example: "109.50 kWh"
@@ -251,24 +320,19 @@ router.get('/', invoiceController.getAllInvoices);
  *                           example: 22
  *                         total_amount:
  *                           type: string
- *                           description: Total amount including base fee and charging fee
  *                           example: "2,420,000 đ"
+ *                           description: "Total amount (base fee + charging fee)"
  *                         total_energy:
  *                           type: string
  *                           example: "806.67 kWh"
  *                 pagination:
- *                   type: object
- *                   properties:
- *                     currentPage:
- *                       type: integer
- *                     totalPages:
- *                       type: integer
- *                     totalItems:
- *                       type: integer
- *                     itemsPerPage:
- *                       type: integer
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         description: User not found
  *       500:
- *         description: Server error
+ *         $ref: '#/components/responses/InternalServerError'
  */
 router.get('/user/:user_id', invoiceController.getUserInvoices);
 
@@ -277,15 +341,20 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  * /api/invoices/user/{user_id}/unpaid:
  *   get:
  *     summary: Get user's unpaid invoices
- *     description: Get all unpaid invoices for a user. Amount shown is charging fee only (base fee already paid at booking confirmation).
+ *     description: |
+ *       Get all unpaid invoices for a specific user/driver.
+ *       **Important:** Amount shown is charging_fee only because base_fee was already paid at booking confirmation.
  *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: user_id
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID
+ *         description: User/Driver ID
+ *         example: "507f1f77bcf86cd799439011"
  *     responses:
  *       200:
  *         description: List of unpaid invoices (charging fee only)
@@ -303,8 +372,10 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  *                         type: string
  *                       created_at:
  *                         type: string
+ *                         format: date-time
  *                       station:
  *                         type: string
+ *                         example: "EV Station Downtown"
  *                       vehicle:
  *                         type: string
  *                         example: "Tesla Model 3 - 29A-12345"
@@ -313,34 +384,41 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  *                         example: "36.50 kWh"
  *                       charging_fee:
  *                         type: string
- *                         description: Charging fee only (base fee already paid)
  *                         example: "109,500 đ"
+ *                         description: "Energy cost only (base fee already paid)"
  *                       base_fee_paid:
  *                         type: string
- *                         description: Base fee that was already paid at booking
  *                         example: "10,000 đ"
+ *                         description: "Base fee that was paid at booking"
  *                       duration:
  *                         type: string
- *                         description: Human-readable charging duration with seconds
- *                         example: "1 giờ 30 phút 45 giây"
+ *                         example: "1 giờ 30 phút"
+ *                       duration_seconds:
+ *                         type: number
+ *                         example: 5400
  *                 summary:
  *                   type: object
  *                   properties:
  *                     count:
  *                       type: integer
  *                       example: 3
+ *                       description: "Number of unpaid invoices"
  *                     total_unpaid:
  *                       type: number
- *                       description: Total charging fee (excluding base fees)
  *                       example: 328500
+ *                       description: "Total charging fee (VND)"
  *                     total_unpaid_formatted:
  *                       type: string
  *                       example: "328,500 đ"
  *                     note:
  *                       type: string
  *                       example: "Base fee already paid at booking confirmation. Amount shown is charging fee only."
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         description: User not found
  *       500:
- *         description: Server error
+ *         $ref: '#/components/responses/InternalServerError'
  */
 router.get('/user/:user_id/unpaid', invoiceController.getUnpaidInvoices);
 
@@ -473,6 +551,206 @@ router.get('/user/:user_id/unpaid', invoiceController.getUnpaidInvoices);
  *         description: Server error
  */
 router.get('/:invoice_id', invoiceController.getInvoiceDetail);
+
+/**
+ * @swagger
+ * /api/invoices/company/{company_id}/drivers:
+ *   get:
+ *     summary: Get all invoices of drivers in a company
+ *     description: |
+ *       Get all invoices of drivers belonging to a specific company with comprehensive filtering and summary.
+ *       Each invoice includes driver information, charging details, and payment status.
+ *       **Important:**
+ *       - Unpaid invoices show charging_fee only (base_fee already paid at booking)
+ *       - Paid invoices show total_amount (base_fee + charging_fee)
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: company_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Company ID
+ *         example: "507f1f77bcf86cd799439011"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *           minimum: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Items per page
+ *       - in: query
+ *         name: payment_status
+ *         schema:
+ *           type: string
+ *           enum: [unpaid, paid, refunded, cancelled]
+ *         description: Filter by payment status
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter from date (YYYY-MM-DD)
+ *         example: "2025-01-01"
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter to date (YYYY-MM-DD)
+ *         example: "2025-01-31"
+ *     responses:
+ *       200:
+ *         description: Company drivers' invoices with comprehensive summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 company_info:
+ *                   type: object
+ *                   properties:
+ *                     company_id:
+ *                       type: string
+ *                       example: "507f1f77bcf86cd799439011"
+ *                     total_drivers:
+ *                       type: integer
+ *                       example: 5
+ *                       description: "Total number of drivers in company"
+ *                     total_vehicles:
+ *                       type: integer
+ *                       example: 8
+ *                       description: "Total number of vehicles"
+ *                 invoices:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       driver:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                             example: "john_driver"
+ *                           email:
+ *                             type: string
+ *                             example: "john@company.com"
+ *                       station:
+ *                         type: string
+ *                         example: "EV Station Downtown"
+ *                       address:
+ *                         type: string
+ *                         example: "123 Main St, District 1"
+ *                       vehicle:
+ *                         type: string
+ *                         example: "Tesla Model 3 - 29A-12345"
+ *                       duration:
+ *                         type: string
+ *                         example: "1 giờ 30 phút"
+ *                       duration_seconds:
+ *                         type: number
+ *                         example: 5400
+ *                       energy_delivered:
+ *                         type: string
+ *                         example: "36.50 kWh"
+ *                       battery_charged:
+ *                         type: string
+ *                         example: "60%"
+ *                       total_amount:
+ *                         type: string
+ *                         example: "109,500 đ"
+ *                         description: "Unpaid: charging fee | Paid: total amount"
+ *                       payment_status:
+ *                         type: string
+ *                         enum: [unpaid, paid, refunded, cancelled]
+ *                       payment_method:
+ *                         type: string
+ *                         example: "vnpay"
+ *                       payment_date:
+ *                         type: string
+ *                         format: date-time
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total_invoices:
+ *                       type: integer
+ *                       example: 50
+ *                       description: "Total invoices for all company drivers"
+ *                     unpaid:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           example: 10
+ *                         total_amount:
+ *                           type: string
+ *                           example: "1,500,000 đ"
+ *                           description: "Total charging fee only"
+ *                         total_energy:
+ *                           type: string
+ *                           example: "500.00 kWh"
+ *                         note:
+ *                           type: string
+ *                           example: "Base fee already paid at booking confirmation"
+ *                     paid:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           example: 35
+ *                         total_amount:
+ *                           type: string
+ *                           example: "3,200,000 đ"
+ *                           description: "Total amount (base fee + charging fee)"
+ *                         total_energy:
+ *                           type: string
+ *                           example: "1,066.67 kWh"
+ *                     refunded:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           example: 5
+ *                         total_amount:
+ *                           type: string
+ *                           example: "450,000 đ"
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         description: No drivers found for this company
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "No drivers found for this company"
+ *                 company_id:
+ *                   type: string
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.get('/company/:company_id/drivers', invoiceController.getCompanyDriversInvoices);
 
 /**
  * @swagger

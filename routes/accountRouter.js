@@ -410,7 +410,7 @@ module.exports = router;
  *                       company_id:
  *                         oneOf:
  *                           - type: string
- *                           - type: "null"
+ *                           - type: null
  *                         description: "Company reference (populated with company details if available)"
  *                 vehicles:
  *                   type: array
