@@ -339,3 +339,165 @@ exports.getUnpaidInvoices = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+exports.getCompanyDriversInvoices = async (req, res) => {
+  try {
+    const { company_id } = req.params;
+    const {
+      page = 1,
+      limit = 10,
+      payment_status,
+      start_date,
+      end_date
+    } = req.query;
+
+    const Account = require('../models/Account');
+    const Vehicle = require('../models/Vehicle');
+
+    // ✅ 1. Tìm tất cả drivers thuộc company
+    const companyDrivers = await Account.find({
+      company_id: company_id,
+      role: 'driver',
+      isCompany: true
+    }).select('_id username email');
+
+    if (!companyDrivers || companyDrivers.length === 0) {
+      return res.status(404).json({
+        message: 'No drivers found for this company',
+        company_id
+      });
+    }
+
+    const driverIds = companyDrivers.map(driver => driver._id);
+
+    // ✅ 2. Tìm tất cả vehicles thuộc các drivers này
+    const companyVehicles = await Vehicle.find({
+      user_id: { $in: driverIds },
+      company_id: company_id
+    }).select('_id user_id plate_number model');
+
+    const vehicleIds = companyVehicles.map(v => v._id);
+
+    // ✅ 3. Build filter cho invoices
+    let invoiceFilter = {
+      vehicle_id: { $in: vehicleIds }
+    };
+
+    if (payment_status) {
+      invoiceFilter.payment_status = payment_status;
+    }
+
+    // Filter theo thời gian
+    if (start_date || end_date) {
+      invoiceFilter.createdAt = {};
+      if (start_date) invoiceFilter.createdAt.$gte = new Date(start_date);
+      if (end_date) invoiceFilter.createdAt.$lte = new Date(end_date);
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // ✅ 4. Lấy invoices
+    const invoices = await Invoice.find(invoiceFilter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Invoice.countDocuments(invoiceFilter);
+
+    // ✅ 5. Tính tổng theo payment_status
+    const summary = await Invoice.aggregate([
+      { $match: { vehicle_id: { $in: vehicleIds } } },
+      {
+        $group: {
+          _id: '$payment_status',
+          count: { $sum: 1 },
+          total_amount: {
+            $sum: {
+              $cond: [
+                { $eq: ['$payment_status', 'unpaid'] },
+                '$charging_fee',
+                '$total_amount'
+              ]
+            }
+          },
+          total_energy: { $sum: '$energy_delivered_kwh' }
+        }
+      }
+    ]);
+
+    const unpaid = summary.find(s => s._id === 'unpaid') || { count: 0, total_amount: 0, total_energy: 0 };
+    const paid = summary.find(s => s._id === 'paid') || { count: 0, total_amount: 0, total_energy: 0 };
+    const refunded = summary.find(s => s._id === 'refunded') || { count: 0, total_amount: 0, total_energy: 0 };
+
+    // ✅ 6. Format response với thông tin driver
+    const formattedInvoices = invoices.map(inv => {
+      const vehicle = companyVehicles.find(v => v._id.toString() === inv.vehicle_id.toString());
+      const driver = companyDrivers.find(d => d._id.toString() === vehicle?.user_id.toString());
+
+      return {
+        id: inv._id,
+        created_at: inv.createdAt,
+        
+        // Driver info
+        driver: {
+          id: driver?._id,
+          username: driver?.username,
+          email: driver?.email
+        },
+
+        // Invoice info
+        station: inv.station_name,
+        address: inv.station_address,
+        vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
+        
+        duration: inv.charging_duration_formatted,
+        duration_seconds: inv.charging_duration_seconds,
+        energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
+        battery_charged: `${inv.battery_charged_percentage}%`,
+        
+        total_amount: inv.payment_status === 'unpaid'
+          ? `${inv.charging_fee.toLocaleString('vi-VN')} đ`
+          : `${inv.total_amount.toLocaleString('vi-VN')} đ`,
+        
+        payment_status: inv.payment_status,
+        payment_method: inv.payment_method,
+        payment_date: inv.payment_date
+      };
+    });
+
+    res.status(200).json({
+      company_info: {
+        company_id,
+        total_drivers: companyDrivers.length,
+        total_vehicles: companyVehicles.length
+      },
+      invoices: formattedInvoices,
+      summary: {
+        total_invoices: total,
+        unpaid: {
+          count: unpaid.count,
+          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`,
+          total_energy: `${unpaid.total_energy.toFixed(2)} kWh`,
+          note: 'Base fee already paid at booking confirmation'
+        },
+        paid: {
+          count: paid.count,
+          total_amount: `${paid.total_amount.toLocaleString('vi-VN')} đ`,
+          total_energy: `${paid.total_energy.toFixed(2)} kWh`
+        },
+        refunded: {
+          count: refunded.count,
+          total_amount: `${refunded.total_amount.toLocaleString('vi-VN')} đ`
+        }
+      },
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

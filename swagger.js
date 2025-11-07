@@ -308,6 +308,176 @@ function buildSwaggerSpec(baseUrl) {
               updatedAt: { type: "string", format: "date-time" },
             },
           },
+          Invoice: {
+            type: "object",
+            properties: {
+              _id: { type: "string", example: "507f1f77bcf86cd799439011" },
+              session_id: {
+                type: "string",
+                example: "507f1f77bcf86cd799439012",
+                description: "Charging session reference",
+              },
+              user_id: {
+                type: "string",
+                example: "507f1f77bcf86cd799439013",
+                description: "User/Driver ID",
+              },
+              vehicle_id: {
+                type: "string",
+                example: "507f1f77bcf86cd799439014",
+                description: "Vehicle ID",
+              },
+              station_id: {
+                type: "string",
+                example: "507f1f77bcf86cd799439015",
+                description: "Station ID",
+              },
+              station_name: {
+                type: "string",
+                example: "EV Station Downtown",
+                description: "Denormalized station name",
+              },
+              station_address: {
+                type: "string",
+                example: "123 Main St, District 1, HCMC",
+                description: "Denormalized station address",
+              },
+              vehicle_model: {
+                type: "string",
+                example: "Tesla Model 3",
+                description: "Denormalized vehicle model",
+              },
+              vehicle_plate_number: {
+                type: "string",
+                example: "29A-12345",
+                description: "Denormalized vehicle plate",
+              },
+              battery_capacity_kwh: {
+                type: "number",
+                example: 75,
+                description: "Vehicle battery capacity in kWh",
+              },
+              start_time: {
+                type: "string",
+                format: "date-time",
+                description: "Charging start time",
+              },
+              end_time: {
+                type: "string",
+                format: "date-time",
+                description: "Charging end time",
+              },
+              charging_duration_seconds: {
+                type: "number",
+                example: 5400,
+                description: "Duration in seconds",
+              },
+              charging_duration_minutes: {
+                type: "number",
+                example: 90,
+                description: "Duration in minutes",
+              },
+              charging_duration_hours: {
+                type: "number",
+                example: 1.5,
+                description: "Duration in hours",
+              },
+              charging_duration_formatted: {
+                type: "string",
+                example: "1 giờ 30 phút",
+                description: "Human-readable duration",
+              },
+              initial_battery_percentage: {
+                type: "number",
+                example: 30,
+                description: "Battery % at start",
+              },
+              final_battery_percentage: {
+                type: "number",
+                example: 80,
+                description: "Battery % at end",
+              },
+              target_battery_percentage: {
+                type: "number",
+                example: 80,
+                description: "Target battery %",
+              },
+              battery_charged_percentage: {
+                type: "number",
+                example: 50,
+                description: "Battery % charged",
+              },
+              target_reached: {
+                type: "boolean",
+                example: true,
+                description: "Whether target was reached",
+              },
+              energy_delivered_kwh: {
+                type: "number",
+                example: 37.5,
+                description: "Energy delivered in kWh",
+              },
+              power_capacity_kw: {
+                type: "number",
+                example: 50,
+                description: "Charging power capacity in kW",
+              },
+              calculation_method: {
+                type: "string",
+                enum: ["actual", "estimated"],
+                example: "actual",
+                description: "How energy was calculated",
+              },
+              base_fee: {
+                type: "number",
+                example: 10000,
+                description: "Base fee (VND) - paid at booking",
+              },
+              price_per_kwh: {
+                type: "number",
+                example: 3000,
+                description: "Price per kWh (VND)",
+              },
+              charging_fee: {
+                type: "number",
+                example: 112500,
+                description: "Energy cost only (VND)",
+              },
+              total_amount: {
+                type: "number",
+                example: 122500,
+                description: "Total: base_fee + charging_fee (VND)",
+              },
+              payment_status: {
+                type: "string",
+                enum: ["unpaid", "paid", "refunded", "cancelled"],
+                example: "unpaid",
+                description: "Payment status",
+              },
+              payment_method: {
+                type: "string",
+                enum: ["vnpay"],
+                example: "vnpay",
+                description: "Payment method (VNPay only)",
+              },
+              payment_date: {
+                type: "string",
+                format: "date-time",
+                description: "When payment was completed",
+              },
+              transaction_id: {
+                type: "string",
+                example: "VNPAY123456789",
+                description: "VNPay transaction ID",
+              },
+              notes: {
+                type: "string",
+                description: "Additional notes",
+              },
+              createdAt: { type: "string", format: "date-time" },
+              updatedAt: { type: "string", format: "date-time" },
+            },
+          },
           Error: {
             type: "object",
             properties: {
