@@ -13,6 +13,183 @@ const Vehicle = require("../models/Vehicle");
 const VehicleSubscription = require("../models/VehicleSubscription");
 const SubscriptionPlan = require("../models/SubscriptionPlan");
 
+// ============== GET ALL PAYMENTS ==============
+exports.getAllPayments = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, type, userId } = req.query;
+
+    let filter = {};
+    if (type) filter.type = type;
+    if (userId) filter.madeBy = userId;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const payments = await Payment.find(filter)
+      .populate("madeBy", "username email phone")
+      .populate({
+        path: "invoice_ids",
+        select:
+          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean(); // Use lean() to get plain objects and avoid virtuals
+
+    const total = await Payment.countDocuments(filter);
+
+    // Filter out null invoices from invoice_ids array
+    const formattedPayments = payments.map((payment) => {
+      if (payment.invoice_ids && Array.isArray(payment.invoice_ids)) {
+        payment.invoice_ids = payment.invoice_ids.filter(
+          (inv) => inv !== null && inv !== undefined
+        );
+      }
+      return payment;
+    });
+
+    res.status(200).json({
+      payments: formattedPayments,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ============== GET PAYMENT BY ID ==============
+exports.getPaymentById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const payment = await Payment.findById(id)
+      .populate("madeBy", "username email phone")
+      .populate({
+        path: "invoice_ids",
+        select:
+          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+      })
+      .lean(); // Use lean() to get plain objects and avoid virtuals
+
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+
+    // Filter out null invoices from invoice_ids array
+    if (payment.invoice_ids && Array.isArray(payment.invoice_ids)) {
+      payment.invoice_ids = payment.invoice_ids.filter(
+        (inv) => inv !== null && inv !== undefined
+      );
+    }
+
+    res.status(200).json(payment);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ============== GET MY PAYMENTS ==============
+exports.getMyPayments = async (req, res) => {
+  try {
+    // Get user ID from JWT token (set by auth middleware)
+    const userId = req.user.accountId;
+    const { page = 1, limit = 10, type } = req.query;
+
+    let filter = { madeBy: userId };
+    if (type) filter.type = type;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const payments = await Payment.find(filter)
+      .populate({
+        path: "invoice_ids",
+        select:
+          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean(); // Use lean() to get plain objects and avoid virtuals
+
+    const total = await Payment.countDocuments(filter);
+
+    // Filter out null invoices from invoice_ids array
+    const formattedPayments = payments.map((payment) => {
+      if (payment.invoice_ids && Array.isArray(payment.invoice_ids)) {
+        payment.invoice_ids = payment.invoice_ids.filter(
+          (inv) => inv !== null && inv !== undefined
+        );
+      }
+      return payment;
+    });
+
+    res.status(200).json({
+      payments: formattedPayments,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ============== GET PAYMENTS BY USER ID ==============
+exports.getPaymentsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { page = 1, limit = 10, type } = req.query;
+
+    let filter = { madeBy: userId };
+    if (type) filter.type = type;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const payments = await Payment.find(filter)
+      .populate({
+        path: "invoice_ids",
+        select:
+          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean(); // Use lean() to get plain objects and avoid virtuals
+
+    const total = await Payment.countDocuments(filter);
+
+    // Filter out null invoices from invoice_ids array
+    const formattedPayments = payments.map((payment) => {
+      if (payment.invoice_ids && Array.isArray(payment.invoice_ids)) {
+        payment.invoice_ids = payment.invoice_ids.filter(
+          (inv) => inv !== null && inv !== undefined
+        );
+      }
+      return payment;
+    });
+
+    res.status(200).json({
+      payments: formattedPayments,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const url = require("url");
 const querystring = require("querystring");
 const { findById } = require("../models/Vehicle");
@@ -381,11 +558,20 @@ exports.payForSubscriptionReturn = async (req, res) => {
 
 exports.payForCharging = async (req, res) => {
   try {
-    const { invoiceId, amount, userId } = req.body;
+    const { invoiceId, invoiceIds, amount, userId } = req.body;
 
-    if (!invoiceId || !amount || !userId) {
+    // Support both single invoiceId and array invoiceIds
+    let invoiceIdArray = [];
+    if (invoiceIds && Array.isArray(invoiceIds) && invoiceIds.length > 0) {
+      invoiceIdArray = invoiceIds;
+    } else if (invoiceId) {
+      invoiceIdArray = [invoiceId];
+    }
+
+    if (invoiceIdArray.length === 0 || !amount || !userId) {
       return res.status(400).json({
-        message: "Missing required fields: invoiceId, amount, userId",
+        message:
+          "Missing required fields: invoiceId/invoiceIds (array), amount, userId",
       });
     }
 
@@ -402,9 +588,9 @@ exports.payForCharging = async (req, res) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const txnRef = Date.now().toString();
 
-    // 👇 Gửi dữ liệu cần thiết trong vnp_OrderInfo
+    // 👇 Gửi dữ liệu cần thiết trong vnp_OrderInfo (array invoiceIds)
     const orderInfo = new URLSearchParams({
-      invoiceId,
+      invoiceIds: invoiceIdArray.join(","), // Convert array to comma-separated string
       userId,
       type: "charging",
     }).toString();
@@ -473,13 +659,33 @@ exports.payForChargingReturn = async (req, res) => {
         new URLSearchParams(decodedOrderInfo)
       );
 
-      const { invoiceId, userId } = parsedInfo;
+      const { invoiceIds, userId } = parsedInfo;
 
-      // ✅ Tạo bản ghi thanh toán
+      // Parse invoiceIds from comma-separated string to array
+      const invoiceIdArray = invoiceIds
+        ? invoiceIds.split(",").filter((id) => id.trim())
+        : [];
+
+      if (invoiceIdArray.length === 0) {
+        console.error("No invoice IDs found in order info");
+        const baseUrl =
+          process.env.VNPAY_RETURN_URL ||
+          req.protocol + "://" + req.get("host");
+        return res.redirect(
+          `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+            "No invoice IDs found"
+          )}`
+        );
+      }
+
+      // Import Invoice model
+      const Invoice = require("../models/Invoice");
+
+      // ✅ Tạo bản ghi thanh toán (lưu tất cả invoice IDs)
       const newPayment = new Payment({
         madeBy: userId,
         type: "charging",
-        invoice_id: invoiceId,
+        invoice_ids: invoiceIdArray, // Lưu tất cả invoice IDs vào array
         vnp_TxnRef: queryParams.vnp_TxnRef,
         vnp_Amount: Number(queryParams.vnp_Amount) / 100,
         vnp_OrderInfo: decodedOrderInfo,
@@ -493,6 +699,29 @@ exports.payForChargingReturn = async (req, res) => {
       });
       await newPayment.save();
 
+      // ✅ Cập nhật payment_status cho tất cả invoice trong array
+      try {
+        await Invoice.updateMany(
+          { _id: { $in: invoiceIdArray } },
+          {
+            $set: {
+              payment_status: "paid",
+              payment_date: new Date(),
+              transaction_id: queryParams.vnp_TransactionNo,
+            },
+          }
+        );
+        console.log(
+          `✅ Đã cập nhật payment_status cho ${invoiceIdArray.length} invoice(s) sau thanh toán thành công`
+        );
+      } catch (invoiceError) {
+        console.error(
+          "❌ Lỗi khi cập nhật invoice payment_status:",
+          invoiceError
+        );
+        // Không throw error để không ảnh hưởng đến redirect
+      }
+
       console.log(
         "✅ Đã tạo Payment mới cho charging sau thanh toán thành công"
       );
@@ -503,7 +732,9 @@ exports.payForChargingReturn = async (req, res) => {
       return res.redirect(
         `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
           queryParams.vnp_TransactionNo
-        }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceId=${invoiceId}`
+        }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceCount=${
+          invoiceIdArray.length
+        }&invoiceIds=${invoiceIdArray.join(",")}`
       );
     }
 

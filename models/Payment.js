@@ -10,9 +10,10 @@ const paymentSchema = new mongoose.Schema({
     type: String,
     enum: ["subscription", "charging", "base_fee"],
   },
-  invoice_id: {
-    type: mongoose.Schema.Types.ObjectId,
+  invoice_ids: {
+    type: [mongoose.Schema.Types.ObjectId],
     ref: "Invoice",
+    default: [],
   },
   vehicleSubscriptionIdId: String,
   vnp_TxnRef: String,

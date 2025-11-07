@@ -1,39 +1,39 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const invoiceSchema = new mongoose.Schema(
   {
     // ============== REFERENCES ==============
     session_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'ChargingSession',
+      ref: "ChargingSession",
       required: true,
       unique: true, // ✅ MỖI SESSION CHỈ CÓ 1 INVOICE
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
       index: true, // ✅ TÌM INVOICE THEO USER NHANH HƠN
     },
     booking_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Booking',
+      ref: "Booking",
       required: true,
     },
     vehicle_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Vehicle',
+      ref: "Vehicle",
       required: true,
     },
     station_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Station',
+      ref: "Station",
       required: true,
       index: true, // ✅ THỐNG KÊ DOANH THU THEO TRẠM
     },
     chargingPoint_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'ChargingPoint',
+      ref: "ChargingPoint",
       required: true,
     },
 
@@ -115,7 +115,7 @@ const invoiceSchema = new mongoose.Schema(
     },
     calculation_method: {
       type: String,
-      enum: ['battery_based', 'time_based'],
+      enum: ["battery_based", "time_based"],
       // ✅ BIẾT CÁCH TÍNH ĐỂ XỬ LÝ TRANH CHẤP
     },
 
@@ -145,14 +145,14 @@ const invoiceSchema = new mongoose.Schema(
     // ============== PAYMENT ==============
     payment_status: {
       type: String,
-      enum: ['unpaid', 'paid', 'refunded', 'cancelled'],
-      default: 'unpaid',
+      enum: ["unpaid", "paid", "refunded", "cancelled"],
+      default: "unpaid",
       index: true, // ✅ TÌM CÁC INVOICE CHƯA THANH TOÁN
     },
     payment_method: {
       type: String,
-      enum: ['vnpay', null],
-      default: 'vnpay',
+      enum: ["vnpay", null],
+      default: "vnpay",
       // ✅ CHỈ HỖ TRỢ VNPAY
     },
     payment_date: {
@@ -181,7 +181,7 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       // ✅ LƯU MODEL XE
     },
-    
+
     notes: {
       type: String,
       // ✅ GHI CHÚ (VD: "Dừng sớm do khách yêu cầu")
@@ -198,26 +198,26 @@ invoiceSchema.index({ station_id: 1, createdAt: -1 }); // Thống kê doanh thu 
 invoiceSchema.index({ payment_status: 1, createdAt: -1 }); // Tìm invoice chưa thanh toán
 
 // ============== VIRTUALS ==============
-invoiceSchema.virtual('formatted').get(function () {
+invoiceSchema.virtual("formatted").get(function () {
   return {
-    total_amount: this.total_amount.toLocaleString('vi-VN') + ' đ',
-    charging_fee: this.charging_fee.toLocaleString('vi-VN') + ' đ',
-    base_fee: this.base_fee.toLocaleString('vi-VN') + ' đ',
-    price_per_kwh: this.price_per_kwh.toLocaleString('vi-VN') + ' đ/kWh',
-    energy_delivered: this.energy_delivered_kwh.toFixed(2) + ' kWh',
-    battery_charged: this.battery_charged_percentage.toFixed(1) + '%',
+    total_amount: this.total_amount.toLocaleString("vi-VN") + " đ",
+    charging_fee: this.charging_fee.toLocaleString("vi-VN") + " đ",
+    base_fee: this.base_fee.toLocaleString("vi-VN") + " đ",
+    price_per_kwh: this.price_per_kwh.toLocaleString("vi-VN") + " đ/kWh",
+    energy_delivered: this.energy_delivered_kwh.toFixed(2) + " kWh",
+    battery_charged: this.battery_charged_percentage.toFixed(1) + "%",
     duration: this.charging_duration_formatted,
     breakdown: `${this.base_fee.toLocaleString(
-      'vi-VN'
+      "vi-VN"
     )} đ (phí cơ bản) + ${this.energy_delivered_kwh.toFixed(
       2
     )} kWh × ${this.price_per_kwh.toLocaleString(
-      'vi-VN'
-    )} đ/kWh = ${this.total_amount.toLocaleString('vi-VN')} đ`,
+      "vi-VN"
+    )} đ/kWh = ${this.total_amount.toLocaleString("vi-VN")} đ`,
   };
 });
 
-invoiceSchema.set('toJSON', { virtuals: true });
-invoiceSchema.set('toObject', { virtuals: true });
+invoiceSchema.set("toJSON", { virtuals: true });
+invoiceSchema.set("toObject", { virtuals: true });
 
-module.exports = mongoose.model('Invoice', invoiceSchema);
+module.exports = mongoose.model("Invoice", invoiceSchema);
