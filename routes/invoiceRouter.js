@@ -38,9 +38,22 @@ const invoiceController = require('../controllers/invoiceController');
  *           type: string
  *           format: date-time
  *           description: Charging end time
+ *         charging_duration_seconds:
+ *           type: number
+ *           description: Total charging duration in seconds
+ *           example: 5400
+ *         charging_duration_minutes:
+ *           type: number
+ *           description: Total charging duration in minutes
+ *           example: 90
+ *         charging_duration_hours:
+ *           type: number
+ *           description: Total charging duration in hours
+ *           example: 1.5
  *         charging_duration_formatted:
  *           type: string
- *           example: "1h 30m"
+ *           description: Human-readable duration format
+ *           example: "1 giờ 30 phút 45 giây"
  *         energy_delivered_kwh:
  *           type: number
  *           example: 36.5
@@ -191,7 +204,8 @@ router.get('/', invoiceController.getAllInvoices);
  *                         example: "Tesla Model 3 - 29A-12345"
  *                       duration:
  *                         type: string
- *                         example: "1h 30m"
+ *                         description: Human-readable charging duration with seconds
+ *                         example: "1 giờ 30 phút 45 giây"
  *                       energy_delivered:
  *                         type: string
  *                         example: "36.50 kWh"
@@ -307,7 +321,8 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  *                         example: "10,000 đ"
  *                       duration:
  *                         type: string
- *                         example: "1h 30m"
+ *                         description: Human-readable charging duration with seconds
+ *                         example: "1 giờ 30 phút 45 giây"
  *                 summary:
  *                   type: object
  *                   properties:
@@ -384,7 +399,8 @@ router.get('/user/:user_id/unpaid', invoiceController.getUnpaidInvoices);
  *                       type: string
  *                     duration:
  *                       type: string
- *                       example: "1h 30m"
+ *                       description: Human-readable charging duration with seconds
+ *                       example: "1 giờ 30 phút 45 giây"
  *                     initial_battery:
  *                       type: string
  *                       example: "30%"

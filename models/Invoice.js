@@ -46,6 +46,11 @@ const invoiceSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    charging_duration_seconds: {
+      type: Number,
+      required: true,
+      // ✅ TỔNG GIÂY - CHÍNH XÁC NHẤT
+    },
     charging_duration_minutes: {
       type: Number,
       required: true,
@@ -55,7 +60,7 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
     charging_duration_formatted: {
-      type: String, // "1 giờ 30 phút"
+      type: String, // "1 giờ 30 phút 45 giây"
       required: true,
     },
 

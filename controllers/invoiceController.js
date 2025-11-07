@@ -53,6 +53,7 @@ exports.getAllInvoices = async (req, res) => {
       start_time: inv.start_time,
       end_time: inv.end_time,
       duration: inv.charging_duration_formatted,
+      duration_seconds: inv.charging_duration_seconds,
       energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
       battery_charged: `${inv.battery_charged_percentage}%`,
       total_amount: `${inv.total_amount.toLocaleString('vi-VN')} đ`,
@@ -128,6 +129,7 @@ exports.getUserInvoices = async (req, res) => {
       vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
       
       duration: inv.charging_duration_formatted,
+      duration_seconds: inv.charging_duration_seconds,
       energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
       battery_charged: `${inv.battery_charged_percentage}%`,
       
@@ -198,6 +200,9 @@ exports.getInvoiceDetail = async (req, res) => {
         start_time: invoice.start_time,
         end_time: invoice.end_time,
         duration: invoice.charging_duration_formatted,
+        duration_seconds: invoice.charging_duration_seconds,
+        duration_minutes: invoice.charging_duration_minutes,
+        duration_hours: invoice.charging_duration_hours,
 
         initial_battery: `${invoice.initial_battery_percentage}%`,
         final_battery: `${invoice.final_battery_percentage}%`,
@@ -318,6 +323,7 @@ exports.getUnpaidInvoices = async (req, res) => {
       charging_fee: `${inv.charging_fee.toLocaleString('vi-VN')} đ`,
       base_fee_paid: `${inv.base_fee.toLocaleString('vi-VN')} đ`,
       duration: inv.charging_duration_formatted,
+      duration_seconds: inv.charging_duration_seconds,
     }));
     
     res.status(200).json({
