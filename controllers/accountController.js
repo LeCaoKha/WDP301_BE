@@ -4,11 +4,98 @@ const Account = require("../models/Account");
 const Vehicle = require("../models/Vehicle");
 const VehicleSubscription = require("../models/VehicleSubscription");
 const SubscriptionPlan = require("../models/SubscriptionPlan");
+const Company = require("../models/Company");
+
+// Create Company Admin Account
+exports.createCompanyAdmin = async (req, res) => {
+  try {
+    const { username, email, phone, password, company_id } = req.body;
+
+    // Validate required fields
+    if (!username || !email || !phone || !password) {
+      return res.status(400).json({
+        message: "Missing required fields: username, email, phone, password",
+      });
+    }
+
+    // Validate company_id is required
+    if (!company_id) {
+      return res.status(400).json({
+        message: "company_id is required for company admin account",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    // Validate phone format
+    const phoneRegex = /^\+?[0-9]{9,15}$/;
+    if (!phoneRegex.test(phone)) {
+      return res.status(400).json({ message: "Invalid phone format" });
+    }
+
+    // Validate company exists
+    const company = await Company.findById(company_id);
+    if (!company) {
+      return res.status(404).json({ message: "Company not found" });
+    }
+
+    // Check duplicates email/phone/username
+    const existingAccount = await Account.findOne({
+      $or: [{ email }, { phone }, { username }],
+    });
+    if (existingAccount) {
+      if (existingAccount.email === email) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+      if (existingAccount.phone === phone) {
+        return res.status(400).json({ message: "Phone already in use" });
+      }
+      if (existingAccount.username === username) {
+        return res.status(400).json({ message: "Username already in use" });
+      }
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create company admin account
+    const newAccount = new Account({
+      username,
+      email,
+      phone,
+      password: hashedPassword,
+      role: "company", // Fixed role for company admin
+      status: "active",
+      isCompany: true, // Fixed isCompany = true
+      company_id: company_id, // Set company_id from request body
+    });
+
+    await newAccount.save();
+
+    // Populate company_id for response
+    const populatedAccount = await Account.findById(newAccount._id)
+      .select("-password")
+      .populate("company_id", "name address contact_email");
+
+    res.status(201).json({
+      message: "Company admin account created successfully",
+      account: populatedAccount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // Get all accounts
 exports.getAllAccounts = async (req, res) => {
   try {
-    const accounts = await Account.find().select("-password");
+    const accounts = await Account.find()
+      .select("-password")
+      .populate("company_id", "name address contact_email");
     res.status(200).json(accounts);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -19,7 +106,9 @@ exports.getAllAccounts = async (req, res) => {
 exports.getAccountById = async (req, res) => {
   try {
     const { id } = req.params;
-    const account = await Account.findById(id).select("-password");
+    const account = await Account.findById(id)
+      .select("-password")
+      .populate("company_id", "name address contact_email");
     if (!account) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -75,15 +164,21 @@ exports.updateAccountById = async (req, res) => {
       }
     }
 
+    const { company_id } = req.body;
     const updateData = { username, email, phone, role, status };
     if (isCompany !== undefined) {
       updateData.isCompany = isCompany === true ? true : false;
+    }
+    if (company_id !== undefined) {
+      updateData.company_id = company_id || null;
     }
 
     const updated = await Account.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
-    }).select("-password");
+    })
+      .select("-password")
+      .populate("company_id", "name address contact_email");
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -101,7 +196,9 @@ exports.banAccountById = async (req, res) => {
       id,
       { status: "inactive" },
       { new: true }
-    ).select("-password");
+    )
+      .select("-password")
+      .populate("company_id", "name address contact_email");
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -119,7 +216,9 @@ exports.unbanAccountById = async (req, res) => {
       id,
       { status: "active" },
       { new: true }
-    ).select("-password");
+    )
+      .select("-password")
+      .populate("company_id", "name address contact_email");
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -135,7 +234,9 @@ exports.getMyAccount = async (req, res) => {
     // Get user ID from JWT token (set by auth middleware)
     const userId = req.user.accountId;
 
-    const account = await Account.findById(userId).select("-password");
+    const account = await Account.findById(userId)
+      .select("-password")
+      .populate("company_id", "name address contact_email");
     if (!account) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -154,6 +255,14 @@ exports.importManyUser = async (req, res) => {
 
     // Lấy company_id và subscription_id từ request body
     const { company_id, subscription_id } = req.body;
+
+    // Validate company_id nếu được cung cấp
+    if (company_id) {
+      const company = await Company.findById(company_id);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+    }
 
     // Validate subscription_id nếu được cung cấp
     let subscriptionPlan = null;
@@ -194,6 +303,7 @@ exports.importManyUser = async (req, res) => {
           role: item.role || "driver",
           status: item.status || "active",
           isCompany: true, // Tự động set là true khi import
+          company_id: company_id || null, // Set company_id từ request body
           password: hashedPassword,
           excelData: {
             // Lưu thông tin xe từ Excel để dùng sau
@@ -286,6 +396,13 @@ exports.importManyUser = async (req, res) => {
       }
     }
 
+    // Populate company_id cho createdUsers
+    const populatedUsers = await Account.find({
+      _id: { $in: createdUsers.map((u) => u._id) },
+    })
+      .select("-password")
+      .populate("company_id", "name address contact_email");
+
     res.status(201).json({
       message: `Imported ${createdUsers.length} users, ${
         createdVehicles.length
@@ -297,7 +414,7 @@ exports.importManyUser = async (req, res) => {
       usersCount: createdUsers.length,
       vehiclesCount: createdVehicles.length,
       subscriptionsCount: createdSubscriptions.length,
-      users: createdUsers,
+      users: populatedUsers,
       vehicles: createdVehicles,
       subscriptions: createdSubscriptions,
     });
