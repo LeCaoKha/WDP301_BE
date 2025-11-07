@@ -1,0 +1,238 @@
+// EV Driver Database Schema
+// Format: dbdiagram.io
+// Import vào https://dbdiagram.io để xem diagram
+
+Table Account {
+  id ObjectId [pk]
+  username varchar [unique, not null]
+  email varchar [unique, not null]
+  phone varchar [unique, not null]
+  password varchar [not null]
+  role varchar [not null, default: 'driver'] // driver, admin, staff, company
+  status varchar [not null, default: 'active'] // active, inactive
+  isCompany boolean [default: false]
+  refreshToken varchar
+  userId ObjectId [ref: > Account.id, null] // Reference to User (not implemented yet)
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'User account with authentication. Supports multiple roles.'
+}
+
+Table Company {
+  id ObjectId [pk]
+  name varchar [not null]
+  address varchar [not null]
+  contact_email varchar [unique, not null]
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Company information for corporate vehicle management'
+}
+
+Table Vehicle {
+  id ObjectId [pk]
+  user_id ObjectId [ref: > Account.id, not null] // Owner
+  company_id ObjectId [ref: > Company.id, null] // Company owner (optional)
+  plate_number varchar [unique, not null]
+  model varchar [not null]
+  batteryCapacity decimal // kWh
+  vehicle_subscription_id ObjectId [ref: > VehicleSubscription.id, null]
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Electric vehicle information. Can be owned by individual or company.'
+}
+
+Table SubscriptionPlan {
+  id ObjectId [pk]
+  type varchar [not null, default: 'prepaid'] // prepaid
+  name varchar [not null]
+  price decimal [not null]
+  billing_cycle varchar [not null] // 1 month, 3 months, 6 months, 1 year
+  description text
+  isCompany boolean [default: false]
+  discount varchar // e.g., "15%", "30%"
+  is_active boolean [default: true]
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Subscription plans for vehicles. Auto-calculates start_date and end_date based on billing_cycle.'
+}
+
+Table VehicleSubscription {
+  id ObjectId [pk]
+  vehicle_id ObjectId [ref: > Vehicle.id, not null]
+  subscription_id ObjectId [ref: > SubscriptionPlan.id, not null]
+  start_date datetime [not null]
+  end_date datetime [not null]
+  status varchar [not null, default: 'active'] // active, expired
+  auto_renew boolean [default: false]
+  payment_status varchar [default: 'pending'] // paid, pending, failed, refunded
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Vehicle subscription. Auto-expires when end_date passes (checked hourly by scheduler).'
+}
+
+Table Station {
+  id ObjectId [pk]
+  name varchar [unique, not null]
+  address varchar
+  latitude decimal
+  longitude decimal
+  connector_type varchar [not null] // AC, DC
+  power_capacity decimal [not null] // kW - applies to all charging points
+  price_per_kwh decimal [default: 3000] // VND/kWh
+  base_fee decimal [default: 10000] // VND per charging session
+  status varchar [default: 'online'] // online, offline, maintenance
+  createdAt datetime [default: `now()`]
+  
+  Note: 'Charging station. power_capacity is shared by all charging points in this station.'
+}
+
+Table ChargingPoint {
+  id ObjectId [pk]
+  stationId ObjectId [ref: > Station.id, not null]
+  type varchar [not null] // online (for bookings), offline (walk-in)
+  status varchar [default: 'available'] // available, in_use, maintenance
+  current_session_id ObjectId [ref: > ChargingSession.id, null]
+  create_at datetime [default: `now()`]
+  
+  Note: 'Charging point. type: online=requires booking, offline=direct use. power_capacity inherited from Station.'
+}
+
+Table Booking {
+  id ObjectId [pk]
+  user_id ObjectId [ref: > Account.id, not null]
+  station_id ObjectId [ref: > Station.id, not null]
+  vehicle_id ObjectId [ref: > Vehicle.id, not null]
+  chargingPoint_id ObjectId [ref: > ChargingPoint.id, not null]
+  start_time datetime [not null]
+  end_time datetime [not null]
+  status varchar [not null, default: 'pending'] // pending, confirmed, active, completed, cancelled, expired
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Booking for charging slot. Only online charging points can be booked. Booking fee calculated by hours (rounded up).'
+}
+
+Table ChargingSession {
+  id ObjectId [pk]
+  booking_id ObjectId [ref: > Booking.id, not null]
+  chargingPoint_id ObjectId [ref: > ChargingPoint.id, not null]
+  vehicle_id ObjectId [ref: > Vehicle.id, not null]
+  start_time datetime
+  end_time datetime
+  status varchar [default: 'pending'] // pending, in_progress, completed, cancelled
+  initial_battery_percentage decimal [not null] // 0-100
+  current_battery_percentage decimal [default: 0] // 0-100, updated real-time from IoT
+  target_battery_percentage decimal [default: 100] // 0-100
+  energy_delivered_kwh decimal [default: 0]
+  charging_duration_minutes int [default: 0]
+  charging_duration_hours decimal [default: 0]
+  base_fee decimal [not null, default: 10000] // VND
+  price_per_kwh decimal [not null, default: 3000] // VND/kWh
+  charging_fee decimal [default: 0] // VND
+  total_amount decimal [default: 0] // VND
+  qr_code_token varchar [unique, null]
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Charging session. Auto-stops at 100% battery. Energy calculated by battery percentage or time × power.'
+}
+
+Table Invoice {
+  id ObjectId [pk]
+  session_id ObjectId [ref: > ChargingSession.id, unique, not null] // One invoice per session
+  user_id ObjectId [ref: > Account.id, not null]
+  booking_id ObjectId [ref: > Booking.id, not null]
+  vehicle_id ObjectId [ref: > Vehicle.id, not null]
+  station_id ObjectId [ref: > Station.id, not null]
+  chargingPoint_id ObjectId [ref: > ChargingPoint.id, not null]
+  start_time datetime [not null]
+  end_time datetime [not null]
+  charging_duration_minutes int [not null]
+  charging_duration_hours decimal [not null]
+  charging_duration_formatted varchar [not null] // "1 giờ 30 phút"
+  initial_battery_percentage decimal [not null] // 0-100
+  final_battery_percentage decimal [not null] // 0-100
+  target_battery_percentage decimal [default: 100] // 0-100
+  battery_charged_percentage decimal [not null]
+  target_reached boolean [default: false]
+  battery_capacity_kwh decimal [not null] // Snapshot at charging time
+  power_capacity_kw decimal [not null] // Snapshot at charging time
+  energy_delivered_kwh decimal [not null]
+  charging_efficiency decimal [default: 0.9]
+  calculation_method varchar // battery_based, time_based
+  base_fee decimal [not null] // VND - snapshot
+  price_per_kwh decimal [not null] // VND/kWh - snapshot
+  charging_fee decimal [not null] // VND
+  total_amount decimal [not null] // VND
+  payment_status varchar [default: 'unpaid'] // unpaid, paid, refunded, cancelled
+  payment_method varchar [default: 'vnpay'] // vnpay
+  payment_date datetime
+  transaction_id varchar
+  station_name varchar // Snapshot
+  station_address varchar // Snapshot
+  vehicle_plate_number varchar // Snapshot
+  vehicle_model varchar // Snapshot
+  notes text
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Invoice for charging session. Stores snapshot data to prevent data loss if related records are deleted.'
+}
+
+Table Payment {
+  id ObjectId [pk]
+  madeBy ObjectId [ref: > Account.id, not null]
+  type varchar // subscription, charging, base_fee
+  invoice_id ObjectId [ref: > Invoice.id, null]
+  vehicleSubscriptionIdId varchar
+  vnp_TxnRef varchar
+  vnp_Amount decimal
+  vnp_OrderInfo varchar
+  vnp_TransactionNo varchar
+  vnp_BankCode varchar
+  vnp_CardType varchar
+  vnp_PayDate varchar
+  vnp_ResponseCode varchar
+  vnp_TransactionStatus varchar
+  vnp_SecureHash varchar
+  createdAt datetime [default: `now()`]
+  
+  Note: 'Payment records from VNPay. Supports subscription, charging fee, and base fee payments.'
+}
+
+Table StaffReport {
+  id ObjectId [pk]
+  title varchar [not null]
+  content text [not null]
+  userId ObjectId [ref: > Account.id, not null]
+  images json // Array of {imageUrl, imagePublicId}
+  status varchar [default: 'pending'] // pending, processing, resolved, rejected
+  createdAt datetime [default: `now()`]
+  updatedAt datetime [default: `now()`]
+  
+  Note: 'Staff reports with image uploads. Images stored on Cloudinary.'
+}
+
+// Relationships Summary
+// Account (1) -> (N) Vehicle
+// Account (1) -> (N) Booking
+// Account (1) -> (N) Payment
+// Account (1) -> (N) Invoice
+// Account (1) -> (N) StaffReport
+// Company (1) -> (N) Vehicle
+// SubscriptionPlan (1) -> (N) VehicleSubscription
+// Vehicle (1) -> (1) VehicleSubscription
+// Station (1) -> (N) ChargingPoint
+// Station (1) -> (N) Booking
+// Station (1) -> (N) Invoice
+// ChargingPoint (1) -> (N) Booking
+// ChargingPoint (1) -> (N) ChargingSession
+// Booking (1) -> (1) ChargingSession
+// ChargingSession (1) -> (1) Invoice
+// Invoice (N) -> (1) Payment (optional)
+

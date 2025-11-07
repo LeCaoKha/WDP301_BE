@@ -6,6 +6,11 @@ const upload = require("../middleware/uploadExcel");
 
 // Account management routes
 router.post("/import", upload.single("file"), accountController.importManyUser);
+router.post(
+  "/company-admin",
+  authenticateToken,
+  accountController.createCompanyAdmin
+);
 router.get("/", authenticateToken, accountController.getAllAccounts);
 router.get("/me", authenticateToken, accountController.getMyAccount);
 router.get("/:id", authenticateToken, accountController.getAccountById);
@@ -20,6 +25,75 @@ module.exports = router;
 
 /**
  * @swagger
+ * /api/accounts/company-admin:
+ *   post:
+ *     summary: Create a company admin account
+ *     description: >
+ *       Create a new account with company admin privileges.
+ *       The account will automatically have:
+ *       - role = "company"
+ *       - isCompany = true
+ *       - company_id set from request body
+ *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - phone
+ *               - password
+ *               - company_id
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: "company_admin_01"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "admin@company.com"
+ *               phone:
+ *                 type: string
+ *                 example: "+84901234567"
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "SecurePassword123"
+ *               company_id:
+ *                 type: string
+ *                 description: Company ID (required, must exist)
+ *                 example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       201:
+ *         description: Company admin account created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Company admin account created successfully"
+ *                 account:
+ *                   $ref: '#/components/schemas/Account'
+ *       400:
+ *         description: Bad request (missing fields, invalid format, duplicate, or company_id not provided)
+ *       404:
+ *         description: Company not found
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       500:
+ *         description: Server error
+ */
+/**
+ * @swagger
  * /api/accounts:
  *   get:
  *     summary: Get all accounts
@@ -29,6 +103,12 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: List of accounts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Account'
  *       401:
  *         description: Access token required
  *       403:
@@ -64,6 +144,14 @@ module.exports = router;
  *                 status:
  *                   type: string
  *                   enum: [active, inactive]
+ *                 isCompany:
+ *                   type: boolean
+ *                 company_id:
+ *                   oneOf:
+ *                     - type: string
+ *                       example: "507f1f77bcf86cd799439012"
+ *                     - type: "null"
+ *                   description: "Company reference (populated with company details)"
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -94,6 +182,10 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Account detail
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
  *       401:
  *         description: Access token required
  *       403:
@@ -133,9 +225,18 @@ module.exports = router;
  *               isCompany:
  *                 type: boolean
  *                 description: Whether this account represents a company
+ *               company_id:
+ *                 type: string
+ *                 nullable: true
+ *                 description: Company ID (optional, defaults to null)
+ *                 example: "507f1f77bcf86cd799439012"
  *     responses:
  *       200:
  *         description: Updated account
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
  *       401:
  *         description: Access token required
  *       403:
@@ -160,6 +261,10 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Banned account
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
  *       401:
  *         description: Access token required
  *       403:
@@ -184,6 +289,10 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: Unbanned account
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
  *       401:
  *         description: Access token required
  *       403:
@@ -229,10 +338,9 @@ module.exports = router;
  *       Row 4: | kha5 | kha5@gmail.com | 912345680 | 123456 | driver | active | 1111-111112 | v8 | 1000 |
  *       Row 5: | company1 | company1@gmail.com | 987654323 | 123456 | company | active | 1111-111113 | v8 | 1000 |
  *
- *       Note: All imported accounts will have isCompany=true automatically
- *
- *
  *       **Note:**
+ *       - All imported accounts will have isCompany=true automatically
+ *       - If company_id is provided, it will be set for all imported accounts (validated before import)
  *       - Vehicle will only be created if plate_number is provided in Excel.
  *       - If subscription_id is provided, a VehicleSubscription will be automatically created for each vehicle with status='active' and payment_status='paid'.
  *       - The subscription period is calculated based on the billing_cycle of the subscription plan.
@@ -254,7 +362,7 @@ module.exports = router;
  *                 description: Excel file (.xlsx or .xls) containing account and vehicle data
  *               company_id:
  *                 type: string
- *                 description: Company ID to assign to all created vehicles (optional)
+ *                 description: Company ID to assign to all created accounts and vehicles (optional, validated if provided)
  *                 example: "507f1f77bcf86cd799439011"
  *               subscription_id:
  *                 type: string
@@ -297,6 +405,13 @@ module.exports = router;
  *                         type: string
  *                       status:
  *                         type: string
+ *                       isCompany:
+ *                         type: boolean
+ *                       company_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: "null"
+ *                         description: "Company reference (populated with company details if available)"
  *                 vehicles:
  *                   type: array
  *                   items:

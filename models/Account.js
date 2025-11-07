@@ -19,6 +19,11 @@ const accountSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    company_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+    },
     refreshToken: { type: String },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },

@@ -49,13 +49,26 @@ function buildSwaggerSpec(baseUrl) {
               phone: { type: "string", example: "+84901234567" },
               role: {
                 type: "string",
-                enum: ["driver", "admin", "company"],
+                enum: ["driver", "admin", "staff", "company"],
                 example: "driver",
               },
               status: {
                 type: "string",
                 enum: ["active", "inactive"],
                 example: "active",
+              },
+              isCompany: {
+                type: "boolean",
+                example: false,
+                description: "Whether this account represents a company",
+              },
+              company_id: {
+                oneOf: [
+                  { type: "string", example: "507f1f77bcf86cd799439012" },
+                  { type: "null" },
+                ],
+                description:
+                  "Reference to Company (optional, defaults to null). When populated, returns company object with name, address, contact_email",
               },
               createdAt: { type: "string", format: "date-time" },
               updatedAt: { type: "string", format: "date-time" },
