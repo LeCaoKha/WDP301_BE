@@ -38,9 +38,22 @@ const invoiceController = require('../controllers/invoiceController');
  *           type: string
  *           format: date-time
  *           description: Charging end time
+ *         charging_duration_seconds:
+ *           type: number
+ *           description: Total charging duration in seconds
+ *           example: 5400
+ *         charging_duration_minutes:
+ *           type: number
+ *           description: Total charging duration in minutes
+ *           example: 90
+ *         charging_duration_hours:
+ *           type: number
+ *           description: Total charging duration in hours
+ *           example: 1.5
  *         charging_duration_formatted:
  *           type: string
- *           example: "1h 30m"
+ *           description: Human-readable duration format
+ *           example: "1 giờ 30 phút 45 giây"
  *         energy_delivered_kwh:
  *           type: number
  *           example: 36.5
@@ -141,6 +154,7 @@ router.get('/', invoiceController.getAllInvoices);
  * /api/invoices/user/{user_id}:
  *   get:
  *     summary: Get user's invoices
+ *     description: Get all invoices for a user. Note - Unpaid invoices show only charging fee (base fee already paid at booking), paid invoices show total amount.
  *     tags: [Invoices]
  *     parameters:
  *       - in: path
@@ -183,23 +197,76 @@ router.get('/', invoiceController.getAllInvoices);
  *                         type: string
  *                       station:
  *                         type: string
+ *                       address:
+ *                         type: string
  *                       vehicle:
  *                         type: string
+ *                         example: "Tesla Model 3 - 29A-12345"
+ *                       duration:
+ *                         type: string
+ *                         description: Human-readable charging duration with seconds
+ *                         example: "1 giờ 30 phút 45 giây"
  *                       energy_delivered:
  *                         type: string
+ *                         example: "36.50 kWh"
+ *                       battery_charged:
+ *                         type: string
+ *                         example: "60%"
  *                       total_amount:
  *                         type: string
+ *                         description: For unpaid - shows charging fee only (base fee already paid). For paid - shows total amount.
+ *                         example: "109,500 đ"
  *                       payment_status:
+ *                         type: string
+ *                         enum: [unpaid, paid, refunded, cancelled]
+ *                       payment_method:
  *                         type: string
  *                 summary:
  *                   type: object
  *                   properties:
  *                     total_invoices:
  *                       type: integer
+ *                       example: 25
  *                     unpaid:
  *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           example: 3
+ *                         total_amount:
+ *                           type: string
+ *                           description: Total charging fee only (base fee already paid at booking)
+ *                           example: "328,500 đ"
+ *                         total_energy:
+ *                           type: string
+ *                           example: "109.50 kWh"
+ *                         note:
+ *                           type: string
+ *                           example: "Base fee already paid at booking confirmation"
  *                     paid:
  *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           example: 22
+ *                         total_amount:
+ *                           type: string
+ *                           description: Total amount including base fee and charging fee
+ *                           example: "2,420,000 đ"
+ *                         total_energy:
+ *                           type: string
+ *                           example: "806.67 kWh"
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     currentPage:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     totalItems:
+ *                       type: integer
+ *                     itemsPerPage:
+ *                       type: integer
  *       500:
  *         description: Server error
  */
@@ -210,6 +277,7 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  * /api/invoices/user/{user_id}/unpaid:
  *   get:
  *     summary: Get user's unpaid invoices
+ *     description: Get all unpaid invoices for a user. Amount shown is charging fee only (base fee already paid at booking confirmation).
  *     tags: [Invoices]
  *     parameters:
  *       - in: path
@@ -220,7 +288,7 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  *         description: User ID
  *     responses:
  *       200:
- *         description: List of unpaid invoices
+ *         description: List of unpaid invoices (charging fee only)
  *         content:
  *           application/json:
  *             schema:
@@ -230,15 +298,47 @@ router.get('/user/:user_id', invoiceController.getUserInvoices);
  *                   type: array
  *                   items:
  *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       created_at:
+ *                         type: string
+ *                       station:
+ *                         type: string
+ *                       vehicle:
+ *                         type: string
+ *                         example: "Tesla Model 3 - 29A-12345"
+ *                       energy_delivered:
+ *                         type: string
+ *                         example: "36.50 kWh"
+ *                       charging_fee:
+ *                         type: string
+ *                         description: Charging fee only (base fee already paid)
+ *                         example: "109,500 đ"
+ *                       base_fee_paid:
+ *                         type: string
+ *                         description: Base fee that was already paid at booking
+ *                         example: "10,000 đ"
+ *                       duration:
+ *                         type: string
+ *                         description: Human-readable charging duration with seconds
+ *                         example: "1 giờ 30 phút 45 giây"
  *                 summary:
  *                   type: object
  *                   properties:
  *                     count:
  *                       type: integer
+ *                       example: 3
  *                     total_unpaid:
  *                       type: number
+ *                       description: Total charging fee (excluding base fees)
+ *                       example: 328500
  *                     total_unpaid_formatted:
  *                       type: string
+ *                       example: "328,500 đ"
+ *                     note:
+ *                       type: string
+ *                       example: "Base fee already paid at booking confirmation. Amount shown is charging fee only."
  *       500:
  *         description: Server error
  */
@@ -249,6 +349,7 @@ router.get('/user/:user_id/unpaid', invoiceController.getUnpaidInvoices);
  * /api/invoices/{invoice_id}:
  *   get:
  *     summary: Get invoice detail
+ *     description: Get detailed invoice information including charging session, pricing breakdown, and payment status.
  *     tags: [Invoices]
  *     parameters:
  *       - in: path
@@ -267,18 +368,105 @@ router.get('/user/:user_id/unpaid', invoiceController.getUnpaidInvoices);
  *               properties:
  *                 invoice_info:
  *                   type: object
- *                 user_info:
- *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
  *                 station_info:
  *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     address:
+ *                       type: string
  *                 vehicle_info:
  *                   type: object
+ *                   properties:
+ *                     model:
+ *                       type: string
+ *                     plate_number:
+ *                       type: string
+ *                     battery_capacity:
+ *                       type: string
+ *                       example: "75 kWh"
  *                 charging_session:
  *                   type: object
+ *                   properties:
+ *                     start_time:
+ *                       type: string
+ *                     end_time:
+ *                       type: string
+ *                     duration:
+ *                       type: string
+ *                       description: Human-readable charging duration with seconds
+ *                       example: "1 giờ 30 phút 45 giây"
+ *                     initial_battery:
+ *                       type: string
+ *                       example: "30%"
+ *                     final_battery:
+ *                       type: string
+ *                       example: "80%"
+ *                     target_battery:
+ *                       type: string
+ *                       example: "80%"
+ *                     battery_charged:
+ *                       type: string
+ *                       example: "50%"
+ *                     target_reached:
+ *                       type: boolean
+ *                     energy_delivered:
+ *                       type: string
+ *                       example: "37.50 kWh"
+ *                     power_capacity:
+ *                       type: string
+ *                       example: "50 kW"
+ *                     calculation_method:
+ *                       type: string
+ *                       enum: [actual, estimated]
  *                 pricing:
  *                   type: object
+ *                   properties:
+ *                     base_fee:
+ *                       type: number
+ *                       example: 10000
+ *                     base_fee_formatted:
+ *                       type: string
+ *                       example: "10,000 đ"
+ *                     price_per_kwh:
+ *                       type: number
+ *                       example: 3000
+ *                     price_per_kwh_formatted:
+ *                       type: string
+ *                       example: "3,000 đ/kWh"
+ *                     charging_fee:
+ *                       type: number
+ *                       example: 112500
+ *                     charging_fee_formatted:
+ *                       type: string
+ *                       example: "112,500 đ"
+ *                     total_amount:
+ *                       type: number
+ *                       example: 122500
+ *                     total_amount_formatted:
+ *                       type: string
+ *                       example: "122,500 đ"
+ *                     breakdown:
+ *                       type: string
+ *                       example: "Base Fee: 10,000 đ + Charging (37.50 kWh × 3,000 đ/kWh): 112,500 đ"
  *                 payment:
  *                   type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [unpaid, paid, refunded, cancelled]
+ *                     method:
+ *                       type: string
+ *                       enum: [vnpay]
+ *                     payment_date:
+ *                       type: string
+ *                     transaction_id:
+ *                       type: string
  *       404:
  *         description: Invoice not found
  *       500:

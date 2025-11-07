@@ -413,6 +413,10 @@ function buildSwaggerSpec(baseUrl) {
           description:
             "Payment processing with VNPay for subscriptions, charging fees, and base fees",
         },
+        {
+          name: "Invoices",
+          description: "Invoice management and payment tracking endpoints",
+        },
       ],
     },
     apis: ["./routes/*.js"],

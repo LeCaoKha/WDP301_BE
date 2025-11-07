@@ -46,6 +46,11 @@ const invoiceSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    charging_duration_seconds: {
+      type: Number,
+      required: true,
+      // ✅ TỔNG GIÂY - CHÍNH XÁC NHẤT
+    },
     charging_duration_minutes: {
       type: Number,
       required: true,
@@ -55,7 +60,7 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
     charging_duration_formatted: {
-      type: String, // "1 giờ 30 phút"
+      type: String, // "1 giờ 30 phút 45 giây"
       required: true,
     },
 
@@ -195,20 +200,20 @@ invoiceSchema.index({ payment_status: 1, createdAt: -1 }); // Tìm invoice chưa
 // ============== VIRTUALS ==============
 invoiceSchema.virtual('formatted').get(function () {
   return {
-    total_amount: this.total_amount.toLocaleString('vi-VN') + ' VND',
-    charging_fee: this.charging_fee.toLocaleString('vi-VN') + ' VND',
-    base_fee: this.base_fee.toLocaleString('vi-VN') + ' VND',
-    price_per_kwh: this.price_per_kwh.toLocaleString('vi-VN') + ' VND/kWh',
+    total_amount: this.total_amount.toLocaleString('vi-VN') + ' đ',
+    charging_fee: this.charging_fee.toLocaleString('vi-VN') + ' đ',
+    base_fee: this.base_fee.toLocaleString('vi-VN') + ' đ',
+    price_per_kwh: this.price_per_kwh.toLocaleString('vi-VN') + ' đ/kWh',
     energy_delivered: this.energy_delivered_kwh.toFixed(2) + ' kWh',
     battery_charged: this.battery_charged_percentage.toFixed(1) + '%',
     duration: this.charging_duration_formatted,
     breakdown: `${this.base_fee.toLocaleString(
       'vi-VN'
-    )} VND (phí cơ bản) + ${this.energy_delivered_kwh.toFixed(
+    )} đ (phí cơ bản) + ${this.energy_delivered_kwh.toFixed(
       2
     )} kWh × ${this.price_per_kwh.toLocaleString(
       'vi-VN'
-    )} VND/kWh = ${this.total_amount.toLocaleString('vi-VN')} VND`,
+    )} đ/kWh = ${this.total_amount.toLocaleString('vi-VN')} đ`,
   };
 });
 
