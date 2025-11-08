@@ -310,21 +310,17 @@ exports.paymentTestReturn = async (req, res) => {
       });
       await newPayment.save();
 
-      // Redirect đến trang HTML thông báo thanh toán thành công
-      const baseUrl =
-        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+      // Redirect về app với custom URL scheme
       return res.redirect(
-        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${
           queryParams.vnp_TransactionNo
         }&amount=${Number(queryParams.vnp_Amount) / 100}`
       );
     }
 
-    // Payment failed or signature mismatch - redirect đến trang HTML thông báo thất bại
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    // Payment failed or signature mismatch - redirect về app
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+      `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseCode=${
         queryParams.vnp_ResponseCode || ""
       }&responseMessage=${encodeURIComponent(
         queryParams.vnp_ResponseMessage || "Payment failed"
@@ -332,11 +328,9 @@ exports.paymentTestReturn = async (req, res) => {
     );
   } catch (error) {
     console.error("Error in paymentTestReturn:", error);
-    // Redirect đến trang HTML thông báo lỗi khi có lỗi xử lý
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    // Redirect về app khi có lỗi xử lý
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
         error.message || "Error processing payment return"
       )}`
     );
@@ -469,11 +463,8 @@ exports.payForSubscriptionReturn = async (req, res) => {
       const subscriptionPlan = await SubscriptionPlan.findById(subscription_id);
       if (!subscriptionPlan) {
         console.error("Subscription plan not found");
-        const baseUrl =
-          process.env.VNPAY_RETURN_URL ||
-          req.protocol + "://" + req.get("host");
         return res.redirect(
-          `${baseUrl}/payment-failed.html?status=error&txnRef=${txnRef}&message=${encodeURIComponent(
+          `evchargingapp://payment/return?status=error&txnRef=${txnRef}&message=${encodeURIComponent(
             "Subscription plan not found"
           )}`
         );
@@ -520,38 +511,32 @@ exports.payForSubscriptionReturn = async (req, res) => {
         "✅ Đã tạo VehicleSubscription mới sau thanh toán thành công"
       );
 
-      // Redirect đến trang HTML thông báo thanh toán thành công
-      const baseUrl =
-        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+      // Redirect về app
       return res.redirect(
-        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${
           queryParams.vnp_TransactionNo
         }&amount=${
           Number(queryParams.vnp_Amount) / 100
-        }&vehicleSubscriptionId=${vehicleSubscription._id}`
+        }&vehicleSubscriptionId=${vehicleSubscription._id}&type=subscription`
       );
     }
 
-    // ❌ Hash sai hoặc không thành công - redirect đến trang HTML thông báo thất bại
+    // ❌ Hash sai hoặc không thành công - redirect về app
     console.warn("VNPay signature mismatch or failed payment");
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+      `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseCode=${
         queryParams.vnp_ResponseCode || ""
       }&responseMessage=${encodeURIComponent(
         queryParams.vnp_ResponseMessage || "Payment failed"
-      )}`
+      )}&type=subscription`
     );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay:", error);
-    // Redirect đến trang HTML thông báo lỗi
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    // Redirect về app
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
         error.message || "Error processing payment return"
-      )}`
+      )}&type=subscription`
     );
   }
 };
@@ -668,13 +653,10 @@ exports.payForChargingReturn = async (req, res) => {
 
       if (invoiceIdArray.length === 0) {
         console.error("No invoice IDs found in order info");
-        const baseUrl =
-          process.env.VNPAY_RETURN_URL ||
-          req.protocol + "://" + req.get("host");
         return res.redirect(
-          `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+          `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
             "No invoice IDs found"
-          )}`
+          )}&type=charging`
         );
       }
 
@@ -726,38 +708,32 @@ exports.payForChargingReturn = async (req, res) => {
         "✅ Đã tạo Payment mới cho charging sau thanh toán thành công"
       );
 
-      // Redirect đến trang HTML thông báo thanh toán thành công
-      const baseUrl =
-        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+      // Redirect về app
       return res.redirect(
-        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${
           queryParams.vnp_TransactionNo
         }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceCount=${
           invoiceIdArray.length
-        }&invoiceIds=${invoiceIdArray.join(",")}`
+        }&invoiceIds=${invoiceIdArray.join(",")}&type=charging`
       );
     }
 
-    // ❌ Hash sai hoặc không thành công - redirect đến trang HTML thông báo thất bại
+    // ❌ Hash sai hoặc không thành công - redirect về app
     console.warn("VNPay signature mismatch or failed payment");
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+      `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseCode=${
         queryParams.vnp_ResponseCode || ""
       }&responseMessage=${encodeURIComponent(
         queryParams.vnp_ResponseMessage || "Payment failed"
-      )}`
+      )}&type=charging`
     );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay cho charging:", error);
-    // Redirect đến trang HTML thông báo lỗi
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    // Redirect về app
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
         error.message || "Error processing payment return"
-      )}`
+      )}&type=charging`
     );
   }
 };
@@ -936,11 +912,9 @@ exports.payForBaseFeeReturn = async (req, res) => {
         }
       }
 
-      // Redirect đến trang HTML thông báo thanh toán thành công
-      const baseUrl =
-        process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+      // Redirect về app
       return res.redirect(
-        `${baseUrl}/payment-success.html?status=success&txnRef=${txnRef}&transactionNo=${
+        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${
           queryParams.vnp_TransactionNo
         }&amount=${Number(queryParams.vnp_Amount) / 100}&type=base_fee${
           booking_id ? `&booking_id=${booking_id}` : ""
@@ -948,26 +922,22 @@ exports.payForBaseFeeReturn = async (req, res) => {
       );
     }
 
-    // ❌ Hash sai hoặc không thành công - redirect đến trang HTML thông báo thất bại
+    // ❌ Hash sai hoặc không thành công - redirect về app
     console.warn("VNPay signature mismatch or failed payment");
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=failed&txnRef=${txnRef}&responseCode=${
+      `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseCode=${
         queryParams.vnp_ResponseCode || ""
       }&responseMessage=${encodeURIComponent(
         queryParams.vnp_ResponseMessage || "Payment failed"
-      )}`
+      )}&type=base_fee`
     );
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay cho base_fee:", error);
-    // Redirect đến trang HTML thông báo lỗi
-    const baseUrl =
-      process.env.VNPAY_RETURN_URL || req.protocol + "://" + req.get("host");
+    // Redirect về app
     return res.redirect(
-      `${baseUrl}/payment-failed.html?status=error&message=${encodeURIComponent(
+      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
         error.message || "Error processing payment return"
-      )}`
+      )}&type=base_fee`
     );
   }
 };
