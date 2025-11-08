@@ -2,6 +2,7 @@ const Vehicle = require("../models/Vehicle");
 const Account = require("../models/Account");
 const Company = require("../models/Company");
 const VehicleSubscription = require("../models/VehicleSubscription");
+const Invoice = require("../models/Invoice"); // Add this import
 
 // Create Vehicle
 exports.createVehicle = async (req, res) => {
@@ -199,11 +200,19 @@ exports.updateVehicleById = async (req, res) => {
 exports.deleteVehicleById = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Vehicle.findByIdAndDelete(id);
-    if (!deleted) {
+    const vehicle = await Vehicle.findByIdAndDelete(id);
+    if (!vehicle) {
       return res.status(404).json({ message: "Vehicle not found" });
     }
-    res.status(200).json({ message: "Vehicle deleted successfully" });
+    const unpaidInvoices = await Invoice.find({
+      vehicle_id: id,
+      payment_status: "unpaid",
+    });
+    if (unpaidInvoices.length > 0) {
+      return res
+        .status(400)
+        .json({ message: "Cannot delete vehicle with unpaid invoices" });
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
