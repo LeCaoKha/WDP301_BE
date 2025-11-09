@@ -52,11 +52,31 @@ const chargingSessionSchema = new mongoose.Schema(
       max: 100,
       default: 100,
     },
+    final_battery_percentage: {  // ✅ % pin cuối cùng
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null,
+    },
+    battery_charged_percentage: {  // ✅ % pin đã sạc (final - initial)
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+    target_reached: {  // ✅ Đã đạt target hay chưa
+      type: Boolean,
+      default: false,
+    },
     
     // Energy & Time
     energy_delivered_kwh: {
       type: Number,
       default: 0,
+    },
+    power_capacity_kw: {  // ✅ Công suất của trạm sạc (kW)
+      type: Number,
+      default: null,
     },
     charging_duration_minutes: {
       type: Number,
@@ -173,13 +193,22 @@ chargingSessionSchema.methods.calculateCharges = async function () {
   
   // ============== 4. LƯU VÀO DATABASE =================
   this.energy_delivered_kwh = actual_energy_delivered_kwh;
+  this.power_capacity_kw = power_capacity_kw;
   this.charging_duration_minutes = charging_duration_minutes;
   this.charging_duration_hours = Number(charging_duration_hours.toFixed(2));
   this.charging_fee = charging_fee;
   this.total_amount = total_amount;
   
+  // Lưu battery info
+  const final_battery = Math.round(final_battery_used);
+  const battery_charged = Math.round(final_battery - this.initial_battery_percentage);
+  
+  this.final_battery_percentage = final_battery;
+  this.battery_charged_percentage = battery_charged;
+  this.target_reached = final_battery >= (this.target_battery_percentage || 100);
+  
   if (!this.current_battery_percentage) {
-    this.current_battery_percentage = Math.round(final_battery_used);
+    this.current_battery_percentage = final_battery;
   }
   
   // ============== 5. RETURN CALCULATION =================

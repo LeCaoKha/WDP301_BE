@@ -626,4 +626,203 @@ router.get('/', chargingSessionController.getAllSessions);
  */
 router.post('/:session_id/cancel', chargingSessionController.cancelSession);
 
+/**
+ * @swagger
+ * /api/charging-sessions/user/{user_id}/history:
+ *   get:
+ *     summary: Lấy lịch sử phiên sạc đã hoàn thành của user
+ *     description: |
+ *       Lấy danh sách các phiên sạc có status = "completed" của user.
+ *       Kèm theo thống kê tổng hợp (tổng năng lượng, thời gian, chi phí).
+ *       
+ *       **Request chỉ cần truyền:**
+ *       - `user_id` (bắt buộc) - trong path parameter
+ *       - Các query parameters là optional để filter
+ *     tags: [Charging Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: user_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID (MongoDB ObjectId)
+ *         example: "690db6df9c04bf86b32651a6"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *           minimum: 1
+ *         description: Số trang
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Số items mỗi trang
+ *         example: 10
+ *       - in: query
+ *         name: vehicle_id
+ *         schema:
+ *           type: string
+ *         description: Filter theo vehicle ID (optional)
+ *         example: "690xxx123..."
+ *       - in: query
+ *         name: station_id
+ *         schema:
+ *           type: string
+ *         description: Filter theo station ID (optional)
+ *         example: "690xxx456..."
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Từ ngày (YYYY-MM-DD) - optional
+ *         example: "2025-01-01"
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Đến ngày (YYYY-MM-DD) - optional
+ *         example: "2025-12-31"
+ *     responses:
+ *       200:
+ *         description: Lịch sử phiên sạc completed với thống kê
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 charging_history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       session_id:
+ *                         type: string
+ *                       start_time:
+ *                         type: string
+ *                         format: date-time
+ *                       end_time:
+ *                         type: string
+ *                         format: date-time
+ *                       duration:
+ *                         type: string
+ *                         example: "1 giờ 30 phút"
+ *                       duration_minutes:
+ *                         type: number
+ *                       station:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           address:
+ *                             type: string
+ *                       charging_point:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                       vehicle:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           plate_number:
+ *                             type: string
+ *                           model:
+ *                             type: string
+ *                           battery_capacity:
+ *                             type: string
+ *                       battery_info:
+ *                         type: object
+ *                         properties:
+ *                           initial:
+ *                             type: string
+ *                             example: "30%"
+ *                           final:
+ *                             type: string
+ *                             example: "80%"
+ *                           target:
+ *                             type: string
+ *                             example: "80%"
+ *                           charged:
+ *                             type: string
+ *                             example: "50%"
+ *                           target_reached:
+ *                             type: boolean
+ *                       energy_delivered:
+ *                         type: string
+ *                         example: "36.50 kWh"
+ *                       power_capacity:
+ *                         type: string
+ *                         example: "50 kW"
+ *                       pricing:
+ *                         type: object
+ *                         properties:
+ *                           base_fee:
+ *                             type: string
+ *                             example: "10,000 đ"
+ *                           price_per_kwh:
+ *                             type: string
+ *                             example: "3,000 đ/kWh"
+ *                           charging_fee:
+ *                             type: string
+ *                             example: "109,500 đ"
+ *                           total_amount:
+ *                             type: string
+ *                             example: "119,500 đ"
+ *                       status:
+ *                         type: string
+ *                         example: "completed"
+ *                 statistics:
+ *                   type: object
+ *                   properties:
+ *                     total_sessions:
+ *                       type: integer
+ *                       description: "Tổng số phiên sạc"
+ *                       example: 25
+ *                     total_energy_delivered:
+ *                       type: string
+ *                       description: "Tổng năng lượng đã sạc"
+ *                       example: "912.50 kWh"
+ *                     total_charging_time:
+ *                       type: string
+ *                       description: "Tổng thời gian sạc"
+ *                       example: "37 giờ 45 phút"
+ *                     total_amount_spent:
+ *                       type: string
+ *                       description: "Tổng chi phí"
+ *                       example: "2,987,500 đ"
+ *                     average_battery_charged:
+ *                       type: string
+ *                       description: "Trung bình % pin sạc mỗi lần"
+ *                       example: "48.5%"
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     currentPage:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     totalItems:
+ *                       type: integer
+ *                     itemsPerPage:
+ *                       type: integer
+ *       404:
+ *         description: User không tồn tại
+ *       500:
+ *         description: Server error
+ */
+router.get('/user/:user_id/history', chargingSessionController.getUserChargingHistory);
+
 module.exports = router;

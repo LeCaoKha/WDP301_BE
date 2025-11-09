@@ -585,3 +585,204 @@ exports.updateBatteryLevel = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// ============== 7. GET USER'S COMPLETED CHARGING HISTORY =================
+exports.getUserChargingHistory = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const { 
+      page = 1, 
+      limit = 10,
+      start_date,
+      end_date,
+      vehicle_id,
+      station_id
+    } = req.query;
+
+    // Build filter
+    let bookingFilter = { user_id };
+    
+    // Filter theo vehicle
+    if (vehicle_id) {
+      bookingFilter.vehicle_id = vehicle_id;
+    }
+    
+    // Filter theo station
+    if (station_id) {
+      bookingFilter.station_id = station_id;
+    }
+
+    // Tìm tất cả bookings của user
+    const bookings = await Booking.find(bookingFilter).select('_id');
+    const bookingIds = bookings.map(b => b._id);
+
+    // ✅ KIỂM TRA nếu user không có booking nào
+    if (bookingIds.length === 0) {
+      return res.status(200).json({
+        charging_history: [],
+        statistics: {
+          total_sessions: 0,
+          total_energy_delivered: '0.00 kWh',
+          total_charging_time: '0 giờ 0 phút',
+          total_amount_spent: '0 đ',
+          average_battery_charged: '0.0%'
+        },
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: parseInt(limit)
+        }
+      });
+    }
+
+    // Filter sessions - CHỈ LẤY COMPLETED
+    let sessionFilter = {
+      booking_id: { $in: bookingIds },
+      status: 'completed' // ✅ CHỈ LẤY PHIÊN ĐÃ HOÀN THÀNH
+    };
+
+    // Filter theo thời gian
+    if (start_date || end_date) {
+      sessionFilter.end_time = {};
+      if (start_date) sessionFilter.end_time.$gte = new Date(start_date);
+      if (end_date) sessionFilter.end_time.$lte = new Date(end_date);
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Lấy sessions đã completed
+    const sessions = await ChargingSession.find(sessionFilter)
+      .populate({
+        path: 'booking_id',
+        populate: [
+          { path: 'station_id', select: 'name address' },
+          { path: 'user_id', select: 'username email' }
+        ]
+      })
+      .populate('chargingPoint_id', 'name status')
+      .populate('vehicle_id', 'plate_number model batteryCapacity')
+      .sort({ end_time: -1 }) // Mới nhất trước
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await ChargingSession.countDocuments(sessionFilter);
+
+    // Tính tổng thống kê
+    const stats = await ChargingSession.aggregate([
+      { $match: sessionFilter },
+      {
+        $group: {
+          _id: null,
+          total_sessions: { $sum: 1 },
+          total_energy: { $sum: '$energy_delivered_kwh' },
+          total_duration_minutes: { $sum: '$charging_duration_minutes' },
+          total_amount: { $sum: '$total_amount' },
+          avg_battery_charged: { $avg: '$battery_charged_percentage' }
+        }
+      }
+    ]);
+
+    const statistics = stats[0] || {
+      total_sessions: 0,
+      total_energy: 0,
+      total_duration_minutes: 0,
+      total_amount: 0,
+      avg_battery_charged: 0
+    };
+
+    // Format response
+    const formattedSessions = sessions.map(session => {
+      const booking = session.booking_id;
+      const station = booking?.station_id;
+      const vehicle = session.vehicle_id;
+      const chargingPoint = session.chargingPoint_id;
+
+      // Tính duration
+      const durationMs = session.end_time - session.start_time;
+      const totalSeconds = Math.floor(durationMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      
+      let durationFormatted = '';
+      if (hours > 0) durationFormatted += `${hours} giờ `;
+      if (minutes > 0) durationFormatted += `${minutes} phút`;
+      durationFormatted = durationFormatted.trim();
+
+      return {
+        session_id: session._id,
+        
+        // Thời gian
+        start_time: session.start_time,
+        end_time: session.end_time,
+        duration: durationFormatted,
+        duration_minutes: session.charging_duration_minutes,
+        
+        // Địa điểm
+        station: {
+          id: station?._id,
+          name: station?.name,
+          address: station?.address
+        },
+        charging_point: {
+          id: chargingPoint?._id,
+          name: chargingPoint?.name
+        },
+        
+        // Xe
+        vehicle: {
+          id: vehicle?._id,
+          plate_number: vehicle?.plate_number,
+          model: vehicle?.model,
+          battery_capacity: vehicle?.batteryCapacity ? `${vehicle.batteryCapacity} kWh` : 'N/A'
+        },
+        
+        // Pin
+        battery_info: {
+          initial: `${session.initial_battery_percentage || 0}%`,
+          final: `${session.final_battery_percentage || session.current_battery_percentage || 0}%`,
+          target: `${session.target_battery_percentage || 100}%`,
+          charged: `${session.battery_charged_percentage || 0}%`,
+          target_reached: session.target_reached || false
+        },
+        
+        // Năng lượng
+        energy_delivered: `${session.energy_delivered_kwh?.toFixed(2) || 0} kWh`,
+        power_capacity: session.power_capacity_kw ? `${session.power_capacity_kw} kW` : 'N/A',
+        
+        // Tiền
+        pricing: {
+          base_fee: session.base_fee ? `${session.base_fee.toLocaleString('vi-VN')} đ` : 'N/A',
+          price_per_kwh: session.price_per_kwh ? `${session.price_per_kwh.toLocaleString('vi-VN')} đ/kWh` : 'N/A',
+          charging_fee: session.charging_fee ? `${session.charging_fee.toLocaleString('vi-VN')} đ` : 'N/A',
+          total_amount: session.total_amount ? `${session.total_amount.toLocaleString('vi-VN')} đ` : 'N/A'
+        },
+        
+        status: session.status
+      };
+    });
+
+    res.status(200).json({
+      charging_history: formattedSessions,
+      statistics: {
+        total_sessions: statistics.total_sessions,
+        total_energy_delivered: `${(statistics.total_energy || 0).toFixed(2)} kWh`,
+        total_charging_time: `${Math.floor((statistics.total_duration_minutes || 0) / 60)} giờ ${(statistics.total_duration_minutes || 0) % 60} phút`,
+        total_amount_spent: `${(statistics.total_amount || 0).toLocaleString('vi-VN')} đ`,
+        average_battery_charged: `${(statistics.avg_battery_charged || 0).toFixed(1)}%`
+      },
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error in getUserChargingHistory:', error);
+    res.status(500).json({ 
+      message: error.message,
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};

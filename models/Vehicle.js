@@ -32,6 +32,20 @@ const vehicleSchema = new mongoose.Schema(
       ref: "VehicleSubscription",
       required: false,
     },
+    // Soft Delete Fields
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true, // Index để query nhanh
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedReason: {
+      type: String,
+      default: null,
+    },
   },
   { versionKey: false, timestamps: true }
 );
