@@ -2,7 +2,9 @@ const Vehicle = require("../models/Vehicle");
 const Account = require("../models/Account");
 const Company = require("../models/Company");
 const VehicleSubscription = require("../models/VehicleSubscription");
-const Invoice = require("../models/Invoice"); // Add this import
+const Invoice = require("../models/Invoice");
+const ChargingSession = require("../models/ChargingSession");
+const Booking = require("../models/Booking");
 
 // Create Vehicle
 exports.createVehicle = async (req, res) => {
@@ -200,19 +202,65 @@ exports.updateVehicleById = async (req, res) => {
 exports.deleteVehicleById = async (req, res) => {
   try {
     const { id } = req.params;
-    const vehicle = await Vehicle.findByIdAndDelete(id);
+    
+    // ✅ 1. KIỂM TRA vehicle có tồn tại không
+    const vehicle = await Vehicle.findById(id);
     if (!vehicle) {
       return res.status(404).json({ message: "Vehicle not found" });
     }
+    
+    // ✅ 2. KIỂM TRA xe đang có booking active/confirmed không
+    const activeBookings = await Booking.find({
+      vehicle_id: id,
+      status: { $in: ["pending", "confirmed", "active"] }
+    });
+    
+    if (activeBookings.length > 0) {
+      return res.status(400).json({ 
+        message: "Cannot delete vehicle with active bookings",
+        active_bookings_count: activeBookings.length,
+        booking_statuses: activeBookings.map(b => b.status)
+      });
+    }
+    
+    // ✅ 3. KIỂM TRA xe đang trong phiên sạc không (pending hoặc in_progress)
+    const activeChargingSessions = await ChargingSession.find({
+      vehicle_id: id,
+      status: { $in: ["pending", "in_progress"] }
+    });
+    
+    if (activeChargingSessions.length > 0) {
+      return res.status(400).json({ 
+        message: "Cannot delete vehicle with active charging sessions",
+        active_sessions_count: activeChargingSessions.length,
+        session_statuses: activeChargingSessions.map(s => s.status)
+      });
+    }
+    
+    // ✅ 4. KIỂM TRA unpaid invoices
     const unpaidInvoices = await Invoice.find({
       vehicle_id: id,
       payment_status: "unpaid",
     });
+    
     if (unpaidInvoices.length > 0) {
-      return res
-        .status(400)
-        .json({ message: "Cannot delete vehicle with unpaid invoices" });
+      return res.status(400).json({ 
+        message: "Cannot delete vehicle with unpaid invoices",
+        unpaid_count: unpaidInvoices.length
+      });
     }
+    
+    // ✅ 5. CHỈ XÓA KHI ĐÃ PASS HẾT KIỂM TRA
+    await Vehicle.findByIdAndDelete(id);
+    
+    res.status(200).json({ 
+      message: "Vehicle deleted successfully",
+      deleted_vehicle: {
+        id: vehicle._id,
+        plate_number: vehicle.plate_number,
+        model: vehicle.model
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
