@@ -15,6 +15,11 @@ const paymentSchema = new mongoose.Schema({
     ref: "Invoice",
     default: [],
   },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Company",
+    default: null,
+  },
   vehicleSubscriptionIdId: String,
   vnp_TxnRef: String,
   vnp_Amount: Number,

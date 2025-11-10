@@ -73,7 +73,7 @@ exports.getAllVehicles = async (req, res) => {
     let filter = {};
 
     // Filter by isActive (soft delete) - MẶC ĐỊNH CHỈ LẤY ACTIVE
-    if (includeDeleted !== 'true') {
+    if (includeDeleted !== "true") {
       filter.isActive = true;
     }
 
@@ -208,73 +208,86 @@ exports.deleteVehicleById = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    
+
     // ✅ 1. KIỂM TRA vehicle có tồn tại và đang active không
     const vehicle = await Vehicle.findOne({ _id: id, isActive: true });
     if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found or already deleted" });
+      return res
+        .status(404)
+        .json({ message: "Vehicle not found or already deleted" });
     }
-    
+
     // ✅ 2. KIỂM TRA xe đang có booking active/confirmed không
     const activeBookings = await Booking.find({
       vehicle_id: id,
-      status: { $in: ["pending", "confirmed", "active"] }
+      status: { $in: ["pending", "confirmed", "active"] },
     });
-    
+
     if (activeBookings.length > 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Cannot delete vehicle with active bookings",
         active_bookings_count: activeBookings.length,
-        booking_statuses: activeBookings.map(b => b.status),
-        note: "Please wait for all bookings to complete or cancel them first"
+        booking_statuses: activeBookings.map((b) => b.status),
+        note: "Please wait for all bookings to complete or cancel them first",
       });
     }
-    
+
     // ✅ 3. KIỂM TRA xe đang trong phiên sạc không (pending hoặc in_progress)
     const activeChargingSessions = await ChargingSession.find({
       vehicle_id: id,
-      status: { $in: ["pending", "in_progress"] }
+      status: { $in: ["pending", "in_progress"] },
     });
-    
+
     if (activeChargingSessions.length > 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Cannot delete vehicle with active charging sessions",
         active_sessions_count: activeChargingSessions.length,
-        session_statuses: activeChargingSessions.map(s => s.status),
-        note: "Please wait for charging sessions to complete first"
+        session_statuses: activeChargingSessions.map((s) => s.status),
+        note: "Please wait for charging sessions to complete first",
       });
     }
-    
+
     // ✅ 4. KIỂM TRA unpaid invoices
     const unpaidInvoices = await Invoice.find({
       vehicle_id: id,
       payment_status: "unpaid",
     });
-    
+
     if (unpaidInvoices.length > 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Cannot delete vehicle with unpaid invoices",
         unpaid_count: unpaidInvoices.length,
-        note: "Please ensure all invoices are paid before deleting vehicle"
+        note: "Please ensure all invoices are paid before deleting vehicle",
       });
     }
-    
-    // ✅ 5. SOFT DELETE - Đánh dấu xe là không active
+
+    // ✅ 5. XÓA TẤT CẢ VehicleSubscription liên kết với xe này
+    const vehicleSubscriptions = await VehicleSubscription.find({
+      vehicle_id: id,
+    });
+    const deletedSubscriptionsCount = vehicleSubscriptions.length;
+    if (deletedSubscriptionsCount > 0) {
+      await VehicleSubscription.deleteMany({ vehicle_id: id });
+    }
+
+    // ✅ 6. SOFT DELETE - Đánh dấu xe là không active và xóa liên kết subscription
     vehicle.isActive = false;
     vehicle.deletedAt = new Date();
     vehicle.deletedReason = reason || "Deleted by user";
+    vehicle.vehicle_subscription_id = null; // Xóa liên kết subscription
     await vehicle.save();
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
       message: "Vehicle deleted successfully (soft delete)",
       deleted_vehicle: {
         id: vehicle._id,
         plate_number: vehicle.plate_number,
         model: vehicle.model,
         deletedAt: vehicle.deletedAt,
-        deletedReason: vehicle.deletedReason
+        deletedReason: vehicle.deletedReason,
       },
-      note: "Vehicle data is preserved for historical records. Charging history and invoices remain intact."
+      deleted_subscriptions_count: deletedSubscriptionsCount,
+      note: "Vehicle data is preserved for historical records. Charging history and invoices remain intact. All associated vehicle subscriptions have been deleted.",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -294,7 +307,7 @@ exports.getMyVehicles = async (req, res) => {
     let filter = { user_id: userId };
 
     // Filter by isActive (soft delete) - MẶC ĐỊNH CHỈ LẤY ACTIVE
-    if (includeDeleted !== 'true') {
+    if (includeDeleted !== "true") {
       filter.isActive = true;
     }
 
@@ -346,20 +359,20 @@ exports.getMyVehicles = async (req, res) => {
 exports.restoreVehicle = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const vehicle = await Vehicle.findOne({ _id: id, isActive: false });
     if (!vehicle) {
-      return res.status(404).json({ 
-        message: "Vehicle not found or not deleted" 
+      return res.status(404).json({
+        message: "Vehicle not found or not deleted",
       });
     }
-    
+
     // Restore vehicle
     vehicle.isActive = true;
     vehicle.deletedAt = null;
     vehicle.deletedReason = null;
     await vehicle.save();
-    
+
     const restoredVehicle = await Vehicle.findById(id)
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
@@ -372,11 +385,11 @@ exports.restoreVehicle = async (req, res) => {
           select: "name price billing_cycle description isCompany discount",
         },
       });
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
       message: "Vehicle restored successfully",
       vehicle: restoredVehicle,
-      note: "Vehicle is now active and available for booking"
+      note: "Vehicle is now active and available for booking",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -388,9 +401,9 @@ exports.getDeletedVehicles = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     const filter = { isActive: false };
-    
+
     const vehicles = await Vehicle.find(filter)
       .populate("user_id", "username email role status")
       .populate("company_id", "name address contact_email")
@@ -406,9 +419,9 @@ exports.getDeletedVehicles = async (req, res) => {
       .sort({ deletedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-    
+
     const total = await Vehicle.countDocuments(filter);
-    
+
     res.status(200).json({
       deleted_vehicles: vehicles,
       pagination: {
