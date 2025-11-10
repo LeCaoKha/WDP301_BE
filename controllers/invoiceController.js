@@ -239,7 +239,13 @@ exports.getInvoiceDetail = async (req, res) => {
         total_amount_formatted: `${invoice.total_amount.toLocaleString(
           'vi-VN'
         )} đ`,
-        breakdown: invoice.formatted.breakdown,
+        breakdown: `${invoice.base_fee.toLocaleString(
+          'vi-VN'
+        )} đ (phí cơ bản) + ${invoice.energy_delivered_kwh.toFixed(
+          2
+        )} kWh × ${invoice.price_per_kwh.toLocaleString(
+          'vi-VN'
+        )} đ/kWh = ${invoice.total_amount.toLocaleString('vi-VN')} đ`,
       },
       payment: {
         status: invoice.payment_status,
