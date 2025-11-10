@@ -11,7 +11,7 @@ const invoiceSchema = new mongoose.Schema(
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Account",
       required: true,
       index: true, // ✅ TÌM INVOICE THEO USER NHANH HƠN
     },
@@ -180,6 +180,10 @@ const invoiceSchema = new mongoose.Schema(
     vehicle_model: {
       type: String,
       // ✅ LƯU MODEL XE
+    },
+    vehicle_is_active: {
+      type: Boolean,
+      // ✅ LƯU TRẠNG THÁI XE LÚC SẠC (PHÒNG XE BỊ XÓA SAU)
     },
 
     notes: {
