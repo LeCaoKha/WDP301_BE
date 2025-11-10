@@ -261,10 +261,20 @@ exports.deleteVehicleById = async (req, res) => {
       });
     }
 
-    // ✅ 5. SOFT DELETE - Đánh dấu xe là không active
+    // ✅ 5. XÓA TẤT CẢ VehicleSubscription liên kết với xe này
+    const vehicleSubscriptions = await VehicleSubscription.find({
+      vehicle_id: id,
+    });
+    const deletedSubscriptionsCount = vehicleSubscriptions.length;
+    if (deletedSubscriptionsCount > 0) {
+      await VehicleSubscription.deleteMany({ vehicle_id: id });
+    }
+
+    // ✅ 6. SOFT DELETE - Đánh dấu xe là không active và xóa liên kết subscription
     vehicle.isActive = false;
     vehicle.deletedAt = new Date();
     vehicle.deletedReason = reason || "Deleted by user";
+    vehicle.vehicle_subscription_id = null; // Xóa liên kết subscription
     await vehicle.save();
 
     res.status(200).json({
@@ -276,7 +286,8 @@ exports.deleteVehicleById = async (req, res) => {
         deletedAt: vehicle.deletedAt,
         deletedReason: vehicle.deletedReason,
       },
-      note: "Vehicle data is preserved for historical records. Charging history and invoices remain intact.",
+      deleted_subscriptions_count: deletedSubscriptionsCount,
+      note: "Vehicle data is preserved for historical records. Charging history and invoices remain intact. All associated vehicle subscriptions have been deleted.",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
