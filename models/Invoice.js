@@ -181,6 +181,10 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       // ✅ LƯU MODEL XE
     },
+    vehicle_is_active: {
+      type: Boolean,
+      // ✅ LƯU TRẠNG THÁI XE LÚC SẠC (PHÒNG XE BỊ XÓA SAU)
+    },
 
     notes: {
       type: String,

@@ -20,11 +20,13 @@ exports.getAllInvoices = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // ✅ BỎ POPULATE, CHỈ LẤY DATA TỪ INVOICE
+    // ✅ POPULATE VEHICLE ĐỂ LẤY isActive
     const invoices = await Invoice.find(filter)
+      .populate('vehicle_id', 'isActive')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
 
     const total = await Invoice.countDocuments(filter);
 
@@ -50,6 +52,7 @@ exports.getAllInvoices = async (req, res) => {
       station: inv.station_name,
       address: inv.station_address,
       vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
+      vehicle_is_active: inv.vehicle_id?.isActive || false,
       start_time: inv.start_time,
       end_time: inv.end_time,
       duration: inv.charging_duration_formatted,
@@ -88,9 +91,11 @@ exports.getUserInvoices = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const invoices = await Invoice.find(filter)
+      .populate('vehicle_id', 'isActive')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
     
     const total = await Invoice.countDocuments(filter);
     
@@ -127,6 +132,7 @@ exports.getUserInvoices = async (req, res) => {
       station: inv.station_name,
       address: inv.station_address,
       vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
+      vehicle_is_active: inv.vehicle_id?.isActive || false,
       
       duration: inv.charging_duration_formatted,
       duration_seconds: inv.charging_duration_seconds,
@@ -174,8 +180,11 @@ exports.getInvoiceDetail = async (req, res) => {
   try {
     const { invoice_id } = req.params;
 
-    // ✅ BỎ POPULATE, CHỈ LẤY DATA ĐÃ LƯU
-    const invoice = await Invoice.findById(invoice_id);
+    const invoice = await Invoice.findById(invoice_id)
+      .populate('vehicle_id', 'isActive plate_number model batteryCapacity')
+      .populate('user_id', 'name email phone')
+      .populate('station_id', 'name address')
+      .lean();
 
     if (!invoice) {
       return res.status(404).json({ message: 'Invoice not found' });
@@ -195,6 +204,7 @@ exports.getInvoiceDetail = async (req, res) => {
         model: invoice.vehicle_model,
         plate_number: invoice.vehicle_plate_number,
         battery_capacity: `${invoice.battery_capacity_kwh} kWh`,
+        is_active: invoice.vehicle_id?.isActive || false,
       },
       charging_session: {
         start_time: invoice.start_time,
@@ -308,7 +318,10 @@ exports.getUnpaidInvoices = async (req, res) => {
     const invoices = await Invoice.find({
       user_id,
       payment_status: 'unpaid',
-    }).sort({ createdAt: -1 });
+    })
+      .populate('vehicle_id', 'isActive')
+      .sort({ createdAt: -1 })
+      .lean();
     
     // ✅ Tổng unpaid chỉ tính charging_fee
     const totalUnpaid = invoices.reduce((sum, inv) => sum + inv.charging_fee, 0);
@@ -318,6 +331,7 @@ exports.getUnpaidInvoices = async (req, res) => {
       created_at: inv.createdAt,
       station: inv.station_name,
       vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
+      vehicle_is_active: inv.vehicle_id?.isActive || false,
       energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
       // ✅ Chỉ hiển thị charging_fee
       charging_fee: `${inv.charging_fee.toLocaleString('vi-VN')} đ`,
@@ -397,9 +411,11 @@ exports.getCompanyDriversInvoices = async (req, res) => {
 
     // ✅ 4. Lấy invoices
     const invoices = await Invoice.find(invoiceFilter)
+      .populate('vehicle_id', 'isActive')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
 
     const total = await Invoice.countDocuments(invoiceFilter);
 
@@ -448,6 +464,7 @@ exports.getCompanyDriversInvoices = async (req, res) => {
         station: inv.station_name,
         address: inv.station_address,
         vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
+        vehicle_is_active: inv.vehicle_id?.isActive || false,
         
         duration: inv.charging_duration_formatted,
         duration_seconds: inv.charging_duration_seconds,
