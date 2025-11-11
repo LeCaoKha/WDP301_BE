@@ -254,6 +254,10 @@ module.exports = router;
  *                       createdAt:
  *                         type: string
  *                         format: date-time
+ *                 total_amount:
+ *                   type: number
+ *                   description: Total amount of all payments (sum of all vnp_Amount)
+ *                   example: 1500000
  *                 pagination:
  *                   type: object
  *                   properties:
