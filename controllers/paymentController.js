@@ -131,6 +131,37 @@ exports.getMyPayments = async (req, res) => {
 
     const total = await Payment.countDocuments(filter);
 
+    // Calculate total amount of all payments (not just current page)
+    // Only sum successful payments (vnp_ResponseCode === "00")
+    // Use the same filter as above (madeBy: userId) and filter by vnp_ResponseCode in the query
+    const totalAmountFilter = {
+      madeBy: userId, // Same userId used in filter above
+    };
+
+    if (type) {
+      totalAmountFilter.type = type;
+    }
+
+    // Query all payments for this user (without pagination) for total calculation
+    // Filter successful payments in the query
+    const allPaymentsForTotal = await Payment.find(totalAmountFilter)
+      .select("vnp_Amount vnp_ResponseCode")
+      .lean();
+
+    // Calculate total amount by summing only successful payments (vnp_ResponseCode === "00")
+    const total_amount = allPaymentsForTotal.reduce((sum, payment) => {
+      // Only count successful payments
+      if (
+        payment.vnp_ResponseCode === "00" &&
+        payment.vnp_Amount != null &&
+        typeof payment.vnp_Amount === "number" &&
+        payment.vnp_Amount > 0
+      ) {
+        return sum + payment.vnp_Amount;
+      }
+      return sum;
+    }, 0);
+
     // Filter out null invoices from invoice_ids array
     const formattedPayments = payments.map((payment) => {
       if (payment.invoice_ids && Array.isArray(payment.invoice_ids)) {
@@ -143,6 +174,7 @@ exports.getMyPayments = async (req, res) => {
 
     res.status(200).json({
       payments: formattedPayments,
+      total_amount: total_amount,
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(total / parseInt(limit)),
