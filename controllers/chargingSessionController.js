@@ -99,15 +99,16 @@ exports.startSessionByQr = async (req, res) => {
     }
     
     // ✅ KIỂM TRA BOOKING PHẢI CONFIRMED
+    // TODO: TEMPORARILY DISABLED FOR DEMO - REMOVE AFTER PRESENTATION
     const booking = session.booking_id;
-    if (booking.status !== 'confirmed') {
-      return res.status(400).json({
-        message: 'Booking must be confirmed before starting session',
-        current_booking_status: booking.status,
-        required_status: 'confirmed',
-        confirm_endpoint: `/api/bookings/${booking._id}/confirm`,
-      });
-    }
+    // if (booking.status !== 'confirmed') {
+    //   return res.status(400).json({
+    //     message: 'Booking must be confirmed before starting session',
+    //     current_booking_status: booking.status,
+    //     required_status: 'confirmed',
+    //     confirm_endpoint: `/api/bookings/${booking._id}/confirm`,
+    //   });
+    // }
     
     // Validate
     if (
