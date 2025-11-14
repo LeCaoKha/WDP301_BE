@@ -16,6 +16,11 @@ const staffReportSchema = new mongoose.Schema(
       ref: "Account",
       required: true,
     },
+    station_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Station",
+      default: null,
+    },
     images: [
       {
         imageUrl: {
