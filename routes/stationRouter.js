@@ -8,6 +8,8 @@ router.get('/:id', authenticateToken, StationController.getStationById);
 router.get('/:id/charging-points', authenticateToken, StationController.getChargingPointsByStation);
 router.put('/:id', authenticateToken, StationController.updateStation);
 router.delete('/:id', authenticateToken, StationController.deleteStation);
+router.post('/add-staff', authenticateToken, StationController.addStaffToStation);
+router.post('/remove-staff', authenticateToken, StationController.removeStaffFromStation);
 module.exports = router;
 
 /**
@@ -389,4 +391,222 @@ module.exports = router;
  *         description: Invalid or expired token
  *       404:
  *         description: Station not found
+ */
+/**
+ * @swagger
+ * /api/stations/add-staff:
+ *   post:
+ *     summary: Gán staff vào station
+ *     description: >
+ *       Gán một hoặc nhiều staff accounts vào một station cụ thể.
+ *       API này sẽ:
+ *       1. Cập nhật field station_id của các Account staff
+ *       2. Thêm các staff_ids vào field staff_id (array) của Station
+ *     tags: [Station]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - station_id
+ *               - staff_ids
+ *             properties:
+ *               station_id:
+ *                 type: string
+ *                 description: ID của station cần gán staff vào
+ *                 example: "507f1f77bcf86cd799439011"
+ *               staff_ids:
+ *                 type: array
+ *                 description: Mảng các ID của staff accounts cần gán vào station
+ *                 items:
+ *                   type: string
+ *                 example: ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"]
+ *     responses:
+ *       200:
+ *         description: Gán staff vào station thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã gán 2 staff vào station thành công"
+ *                 station:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     address:
+ *                       type: string
+ *                     staff_id:
+ *                       type: array
+ *                       description: "Danh sách staff IDs (populated với thông tin staff)"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           role:
+ *                             type: string
+ *                             example: staff
+ *                           status:
+ *                             type: string
+ *                 staffsCount:
+ *                   type: integer
+ *                   example: 2
+ *                 staffs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                         example: staff
+ *                       station_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: null
+ *                         description: "Station reference (populated with station details)"
+ *                       company_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: null
+ *                         description: "Company reference (populated with company details)"
+ *       400:
+ *         description: Bad request (thiếu station_id hoặc staff_ids không hợp lệ)
+ *       404:
+ *         description: Station không tồn tại hoặc một số staff không tồn tại/không phải là staff
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       500:
+ *         description: Server error
+ */
+/**
+ * @swagger
+ * /api/stations/remove-staff:
+ *   post:
+ *     summary: Xóa staff khỏi station
+ *     description: >
+ *       Xóa một hoặc nhiều staff accounts khỏi station.
+ *       API này sẽ:
+ *       1. Set station_id = null cho các Account staff
+ *       2. Xóa các staff_ids khỏi field staff_id (array) của Station
+ *     tags: [Station]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - station_id
+ *               - staff_ids
+ *             properties:
+ *               station_id:
+ *                 type: string
+ *                 description: ID của station cần xóa staff
+ *                 example: "507f1f77bcf86cd799439011"
+ *               staff_ids:
+ *                 type: array
+ *                 description: Mảng các ID của staff accounts cần xóa khỏi station
+ *                 items:
+ *                   type: string
+ *                 example: ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"]
+ *     responses:
+ *       200:
+ *         description: Xóa staff khỏi station thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã xóa 2 staff khỏi station thành công"
+ *                 station:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     address:
+ *                       type: string
+ *                     staff_id:
+ *                       type: array
+ *                       description: "Danh sách staff IDs còn lại (populated với thông tin staff)"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           role:
+ *                             type: string
+ *                             example: staff
+ *                           status:
+ *                             type: string
+ *                 staffsCount:
+ *                   type: integer
+ *                   example: 2
+ *                 staffs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                         example: staff
+ *                       station_id:
+ *                         type: null
+ *                         description: "Station reference (sẽ là null sau khi xóa)"
+ *                       company_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: null
+ *                         description: "Company reference (populated with company details)"
+ *       400:
+ *         description: Bad request (thiếu station_id hoặc staff_ids không hợp lệ)
+ *       404:
+ *         description: Station không tồn tại hoặc một số staff không tồn tại/không phải là staff
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token
+ *       500:
+ *         description: Server error
  */

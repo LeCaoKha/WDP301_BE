@@ -1,4 +1,5 @@
 const StaffReport = require("../models/StaffReport");
+const Account = require("../models/Account");
 const cloudinary = require("../config/cloudinary");
 
 // Tạo report mới (Create)
@@ -13,6 +14,10 @@ exports.createReport = async (req, res) => {
         message: "Title và content là bắt buộc",
       });
     }
+
+    // Lấy station_id từ account đang đăng nhập
+    const currentAccount = await Account.findById(userId).select("station_id");
+    const station_id = currentAccount ? currentAccount.station_id : null;
 
     const images = [];
 
@@ -67,13 +72,15 @@ exports.createReport = async (req, res) => {
       title,
       content,
       userId,
+      station_id, // Tự động lấy từ account đang đăng nhập
       images,
     });
 
     await newReport.save();
 
-    // Populate thông tin user
+    // Populate thông tin user và station
     await newReport.populate("userId", "username email role");
+    await newReport.populate("station_id", "name address");
 
     res.status(201).json({
       message: "Tạo report thành công",
@@ -362,6 +369,64 @@ exports.updateReportStatus = async (req, res) => {
     console.error("Error updating status:", error);
     res.status(500).json({
       message: "Lỗi khi cập nhật status",
+      error: error.message,
+    });
+  }
+};
+
+// Lấy tất cả staff không có station (station_id = null)
+exports.getStaffWithoutStation = async (req, res) => {
+  try {
+    const staffs = await Account.find({
+      role: "staff",
+      station_id: null,
+    })
+      .select("-password")
+      .populate("company_id", "name address contact_email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      total: staffs.length,
+      staffs,
+    });
+  } catch (error) {
+    console.error("Error getting staff without station:", error);
+    res.status(500).json({
+      message: "Lỗi khi lấy danh sách staff không có station",
+      error: error.message,
+    });
+  }
+};
+
+// Lấy tất cả staff trong một station cụ thể
+exports.getStaffInStation = async (req, res) => {
+  try {
+    const { station_id } = req.params;
+
+    if (!station_id) {
+      return res.status(400).json({
+        message: "station_id là bắt buộc",
+      });
+    }
+
+    const staffs = await Account.find({
+      role: "staff",
+      station_id: station_id,
+    })
+      .select("-password")
+      .populate("station_id", "name address")
+      .populate("company_id", "name address contact_email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      station_id: station_id,
+      total: staffs.length,
+      staffs,
+    });
+  } catch (error) {
+    console.error("Error getting staff in station:", error);
+    res.status(500).json({
+      message: "Lỗi khi lấy danh sách staff trong station",
       error: error.message,
     });
   }

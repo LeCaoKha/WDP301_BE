@@ -7,15 +7,81 @@ const {
   handleUploadError,
 } = require("../middleware/uploadImage");
 
+router.post(
+  "/reports",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  uploadMultiple,
+  handleUploadError,
+  staffController.createReport
+);
+
+router.get(
+  "/reports",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  staffController.getAllReports
+);
+
+router.get(
+  "/reports/my",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  staffController.getMyReports
+);
+
+router.get(
+  "/reports/:id",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  staffController.getReportById
+);
+
+router.put(
+  "/reports/:id",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  uploadMultiple,
+  handleUploadError,
+  staffController.updateReport
+);
+
+router.delete(
+  "/reports/:id",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  staffController.deleteReport
+);
+
+router.patch(
+  "/reports/:id/status",
+  verifyToken,
+  checkRole(["admin"]),
+  staffController.updateReportStatus
+);
+
+router.get(
+  "/without-station",
+  verifyToken,
+  checkRole(["admin"]),
+  staffController.getStaffWithoutStation
+);
+
+router.get(
+  "/in-station/:station_id",
+  verifyToken,
+  checkRole(["admin"]),
+  staffController.getStaffInStation
+);
+
+module.exports = router;
+
 /**
  * @swagger
  * tags:
  *   name: Staff Reports
  *   description: Quản lý báo cáo của nhân viên
- */
-
-/**
- * @swagger
+ *
  * /api/staff/reports:
  *   post:
  *     summary: Tạo report mới (có thể upload nhiều ảnh)
@@ -44,19 +110,6 @@ const {
  *     responses:
  *       201:
  *         description: Tạo report thành công
- */
-router.post(
-  "/reports",
-  verifyToken,
-  checkRole(["staff", "admin"]),
-  uploadMultiple,
-  handleUploadError,
-  staffController.createReport
-);
-
-/**
- * @swagger
- * /api/staff/reports:
  *   get:
  *     summary: Lấy tất cả reports (Admin hoặc lọc theo user)
  *     tags: [Staff Reports]
@@ -75,16 +128,7 @@ router.post(
  *     responses:
  *       200:
  *         description: Danh sách reports
- */
-router.get(
-  "/reports",
-  verifyToken,
-  checkRole(["staff", "admin"]),
-  staffController.getAllReports
-);
-
-/**
- * @swagger
+ *
  * /api/staff/reports/my:
  *   get:
  *     summary: Lấy reports của chính mình
@@ -94,16 +138,7 @@ router.get(
  *     responses:
  *       200:
  *         description: Danh sách reports của user
- */
-router.get(
-  "/reports/my",
-  verifyToken,
-  checkRole(["staff", "admin"]),
-  staffController.getMyReports
-);
-
-/**
- * @swagger
+ *
  * /api/staff/reports/{id}:
  *   get:
  *     summary: Lấy report theo ID
@@ -119,17 +154,6 @@ router.get(
  *     responses:
  *       200:
  *         description: Thông tin report
- */
-router.get(
-  "/reports/:id",
-  verifyToken,
-  checkRole(["staff", "admin"]),
-  staffController.getReportById
-);
-
-/**
- * @swagger
- * /api/staff/reports/{id}:
  *   put:
  *     summary: Cập nhật report (có thể thêm/xóa ảnh)
  *     tags: [Staff Reports]
@@ -167,19 +191,6 @@ router.get(
  *     responses:
  *       200:
  *         description: Cập nhật thành công
- */
-router.put(
-  "/reports/:id",
-  verifyToken,
-  checkRole(["staff", "admin"]),
-  uploadMultiple,
-  handleUploadError,
-  staffController.updateReport
-);
-
-/**
- * @swagger
- * /api/staff/reports/{id}:
  *   delete:
  *     summary: Xóa report
  *     tags: [Staff Reports]
@@ -194,16 +205,7 @@ router.put(
  *     responses:
  *       200:
  *         description: Xóa thành công
- */
-router.delete(
-  "/reports/:id",
-  verifyToken,
-  checkRole(["staff", "admin"]),
-  staffController.deleteReport
-);
-
-/**
- * @swagger
+ *
  * /api/staff/reports/{id}/status:
  *   patch:
  *     summary: Cập nhật status report (chỉ Admin)
@@ -232,11 +234,128 @@ router.delete(
  *       200:
  *         description: Cập nhật status thành công
  */
-router.patch(
-  "/reports/:id/status",
-  verifyToken,
-  checkRole(["admin"]),
-  staffController.updateReportStatus
-);
-
-module.exports = router;
+/**
+ * @swagger
+ * /api/staff/without-station:
+ *   get:
+ *     summary: Lấy tất cả staff không có station
+ *     description: >
+ *       Lấy danh sách tất cả staff accounts có station_id = null (chưa được gán vào station nào).
+ *     tags: [Staff Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Danh sách staff không có station
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   example: 5
+ *                 staffs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                         example: staff
+ *                       status:
+ *                         type: string
+ *                         example: active
+ *                       station_id:
+ *                         type: null
+ *                         description: "Station reference (null vì chưa có station)"
+ *                       company_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: null
+ *                         description: "Company reference (populated with company details)"
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token, hoặc không có quyền admin
+ *       500:
+ *         description: Server error
+ */
+/**
+ * @swagger
+ * /api/staff/in-station/{station_id}:
+ *   get:
+ *     summary: Lấy tất cả staff trong một station
+ *     description: >
+ *       Lấy danh sách tất cả staff accounts có station_id trùng với station_id được truyền vào.
+ *     tags: [Staff Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: station_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của station cần lấy danh sách staff
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       200:
+ *         description: Danh sách staff trong station
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 station_id:
+ *                   type: string
+ *                   example: "507f1f77bcf86cd799439011"
+ *                 total:
+ *                   type: integer
+ *                   example: 3
+ *                 staffs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                         example: staff
+ *                       status:
+ *                         type: string
+ *                         example: active
+ *                       station_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: null
+ *                         description: "Station reference (populated with station details)"
+ *                       company_id:
+ *                         oneOf:
+ *                           - type: string
+ *                           - type: null
+ *                         description: "Company reference (populated with company details)"
+ *       400:
+ *         description: Bad request (thiếu station_id)
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token, hoặc không có quyền admin
+ *       500:
+ *         description: Server error
+ */

@@ -7,6 +7,11 @@ const upload = require("../middleware/uploadExcel");
 // Account management routes
 router.post("/import", upload.single("file"), accountController.importManyUser);
 router.post(
+  "/import-staff",
+  upload.single("file"),
+  accountController.importManyStaff
+);
+router.post(
   "/company-admin",
   authenticateToken,
   accountController.createCompanyAdmin
@@ -458,6 +463,113 @@ module.exports = router;
  *         description: Invalid or missing file, or subscription plan not active
  *       404:
  *         description: Subscription plan not found
+ *       500:
+ *         description: Server error
+ */
+/**
+ * @swagger
+ * /api/accounts/import-staff:
+ *   post:
+ *     summary: Import multiple staff accounts from Excel file
+ *     description: >
+ *       Upload an Excel file (.xlsx or .xls) containing multiple staff accounts to create them in bulk.
+ *       All imported accounts will have role="staff" and isCompany=false.
+ *
+ *       **Excel Structure:**
+ *       - Row 1: Column names (username, email, phone, password, role, status)
+ *       - Row 2+: Data rows
+ *
+ *       **Required Excel columns:**
+ *       - username (string, required)
+ *       - email (string, required)
+ *       - phone (string, required)
+ *       - password (string, optional - default: "123456")
+ *       - role (string, optional - will be set to "staff" automatically)
+ *       - status (string, optional - default: "active", values: active, inactive)
+ *
+ *       **Excel file example:**
+ *       Row 1: | username | email | phone | password | role | status |
+ *       Row 2: | kha 4 | kha4@gmail.com | 901234569 | 123456 | staff | active |
+ *       Row 3: | kha 5 | kha5@gmail.com | 912345680 | 123456 | staff | active |
+ *       Row 4: | kha 6 | kha6@gmail.com | 987654323 | 123456 | staff | inactive |
+ *
+ *       **Note:**
+ *       - All imported accounts will have role="staff" and isCompany=false automatically
+ *       - company_id and station_id will be set to null by default
+ *       - The function validates email format, phone format, and checks for duplicates both in file and database
+ *     tags: [Account]
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx or .xls) containing staff account data
+ *     responses:
+ *       201:
+ *         description: Successfully imported staff accounts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Imported 3 staff accounts successfully
+ *                 staffsCount:
+ *                   type: integer
+ *                   example: 3
+ *                 staffs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                         example: staff
+ *                       status:
+ *                         type: string
+ *                         example: active
+ *                       isCompany:
+ *                         type: boolean
+ *                         example: false
+ *                       company_id:
+ *                         type: null
+ *                         description: "Company reference (null by default)"
+ *                       station_id:
+ *                         type: null
+ *                         description: "Station reference (null by default)"
+ *       400:
+ *         description: Invalid or missing file, validation errors, or duplicate accounts found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Validation errors found
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["Row 2: Invalid email format (invalid-email)", "Row 3: Duplicate email/phone/username in file"]
  *       500:
  *         description: Server error
  */

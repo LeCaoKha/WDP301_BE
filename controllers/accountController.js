@@ -423,3 +423,166 @@ exports.importManyUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// Import many staff accounts from Excel
+exports.importManyStaff = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    // Đọc buffer của file Excel
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Convert thành JSON - Bỏ qua dòng 1 (tiêu đề "User"), đọc từ dòng 2 làm header
+    const data = xlsx.utils.sheet_to_json(worksheet, { range: 1 });
+
+    if (!data.length) {
+      return res.status(400).json({ message: "Excel file is empty" });
+    }
+
+    // Validate và map từng staff
+    const staffsToInsert = [];
+    const errors = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      const rowNumber = i + 3; // +3 vì bỏ qua dòng 1 (tiêu đề), dòng 2 là header, dòng 3+ là data
+
+      // Validate required fields
+      if (!item.username || !item.email || !item.phone) {
+        errors.push(
+          `Row ${rowNumber}: Missing required fields (username, email, phone)`
+        );
+        continue;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(item.email)) {
+        errors.push(`Row ${rowNumber}: Invalid email format (${item.email})`);
+        continue;
+      }
+
+      // Validate phone format
+      const phoneRegex = /^\+?[0-9]{9,15}$/;
+      if (!phoneRegex.test(item.phone)) {
+        errors.push(`Row ${rowNumber}: Invalid phone format (${item.phone})`);
+        continue;
+      }
+
+      // Validate status (nếu có)
+      if (item.status && !["active", "inactive"].includes(item.status)) {
+        errors.push(
+          `Row ${rowNumber}: Invalid status (must be "active" or "inactive")`
+        );
+        continue;
+      }
+
+      // Check duplicates trong Excel file
+      const duplicateInFile = data
+        .slice(0, i)
+        .some(
+          (prev) =>
+            prev.email === item.email ||
+            prev.phone === item.phone ||
+            prev.username === item.username
+        );
+      if (duplicateInFile) {
+        errors.push(`Row ${rowNumber}: Duplicate email/phone/username in file`);
+        continue;
+      }
+
+      // Hash password
+      const rawPassword = item.password ? String(item.password) : "123456";
+      const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+      staffsToInsert.push({
+        username: item.username,
+        email: item.email,
+        phone: item.phone,
+        password: hashedPassword,
+        role: "staff", // Fixed role for staff
+        status: item.status || "active",
+        isCompany: false, // Staff không phải company account
+        company_id: null,
+        station_id: null,
+      });
+    }
+
+    // Nếu có lỗi validation, trả về lỗi
+    if (errors.length > 0) {
+      return res.status(400).json({
+        message: "Validation errors found",
+        errors: errors,
+      });
+    }
+
+    // Check duplicates trong database trước khi insert
+    const existingAccounts = await Account.find({
+      $or: staffsToInsert.flatMap((staff) => [
+        { email: staff.email },
+        { phone: staff.phone },
+        { username: staff.username },
+      ]),
+    });
+
+    if (existingAccounts.length > 0) {
+      const duplicateErrors = [];
+      existingAccounts.forEach((existing) => {
+        const duplicateStaff = staffsToInsert.find(
+          (staff) =>
+            staff.email === existing.email ||
+            staff.phone === existing.phone ||
+            staff.username === existing.username
+        );
+        if (duplicateStaff) {
+          if (existing.email === duplicateStaff.email) {
+            duplicateErrors.push(
+              `Email "${duplicateStaff.email}" already exists in database`
+            );
+          }
+          if (existing.phone === duplicateStaff.phone) {
+            duplicateErrors.push(
+              `Phone "${duplicateStaff.phone}" already exists in database`
+            );
+          }
+          if (existing.username === duplicateStaff.username) {
+            duplicateErrors.push(
+              `Username "${duplicateStaff.username}" already exists in database`
+            );
+          }
+        }
+      });
+
+      if (duplicateErrors.length > 0) {
+        return res.status(400).json({
+          message: "Duplicate accounts found in database",
+          errors: duplicateErrors,
+        });
+      }
+    }
+
+    // Thêm staffs vào DB
+    const createdStaffs = await Account.insertMany(staffsToInsert);
+
+    // Populate company_id và station_id cho createdStaffs (mặc dù sẽ null)
+    const populatedStaffs = await Account.find({
+      _id: { $in: createdStaffs.map((s) => s._id) },
+    })
+      .select("-password")
+      .populate("company_id", "name address contact_email")
+      .populate("station_id", "name address");
+
+    res.status(201).json({
+      message: `Imported ${createdStaffs.length} staff accounts successfully`,
+      staffsCount: createdStaffs.length,
+      staffs: populatedStaffs,
+    });
+  } catch (error) {
+    console.error("Error importing staff:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
