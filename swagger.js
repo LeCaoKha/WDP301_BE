@@ -80,8 +80,11 @@ function buildSwaggerSpec(baseUrl) {
               _id: { type: "string", example: "507f1f77bcf86cd799439011" },
               user_id: { type: "string", example: "507f1f77bcf86cd799439012" },
               company_id: {
-                type: "string",
-                example: "507f1f77bcf86cd799439013",
+                oneOf: [
+                  { type: "string", example: "507f1f77bcf86cd799439013" },
+                  { type: "null" },
+                ],
+                description: "Company ID (null for personal vehicles)",
               },
               plate_number: { type: "string", example: "29A-12345" },
               model: { type: "string", example: "Tesla Model 3" },
@@ -89,6 +92,30 @@ function buildSwaggerSpec(baseUrl) {
                 type: "number",
                 format: "double",
                 example: 75.0,
+              },
+              vehicle_subscription_id: {
+                oneOf: [
+                  { type: "string", example: "507f1f77bcf86cd799439014" },
+                  { type: "null" },
+                ],
+                description: "Current active VehicleSubscription ID (null if no subscription)",
+              },
+              isActive: {
+                type: "boolean",
+                example: true,
+                description: "Soft delete flag (false = deleted)",
+                default: true,
+              },
+              deletedAt: {
+                oneOf: [
+                  { type: "string", format: "date-time" },
+                  { type: "null" },
+                ],
+                description: "Deletion timestamp (null if not deleted)",
+              },
+              deletedReason: {
+                oneOf: [{ type: "string" }, { type: "null" }],
+                description: "Reason for deletion (null if not deleted)",
               },
               createdAt: { type: "string", format: "date-time" },
               updatedAt: { type: "string", format: "date-time" },

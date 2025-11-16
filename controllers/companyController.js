@@ -231,28 +231,8 @@ exports.getMyCompanyPayments = async (req, res) => {
     const { page = 1, limit = 10, type } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Find all drivers that belong to this company
-    const companyDrivers = await Account.find({
-      role: "driver",
-      company_id: companyId,
-    }).select("_id");
-
-    const driverIds = companyDrivers.map((driver) => driver._id);
-
-    if (driverIds.length === 0) {
-      return res.status(200).json({
-        payments: [],
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: 0,
-          totalItems: 0,
-          itemsPerPage: parseInt(limit),
-        },
-      });
-    }
-
-    // Find all payments made by these drivers
-    let filter = { madeBy: { $in: driverIds } };
+    // ✅ Tìm tất cả payments có companyId giống với company_id của account hiện tại
+    let filter = { companyId: companyId };
     if (type) filter.type = type;
 
     const payments = await Payment.find(filter)
@@ -263,6 +243,10 @@ exports.getMyCompanyPayments = async (req, res) => {
           path: "company_id",
           select: "name address contact_email",
         },
+      })
+      .populate({
+        path: "companyId",
+        select: "name address contact_email",
       })
       .populate({
         path: "invoice_ids",

@@ -12,6 +12,7 @@ const Payment = require("../models/Payment");
 const Vehicle = require("../models/Vehicle");
 const VehicleSubscription = require("../models/VehicleSubscription");
 const SubscriptionPlan = require("../models/SubscriptionPlan");
+const Account = require("../models/Account");
 
 // ============== GET ALL PAYMENTS ==============
 exports.getAllPayments = async (req, res) => {
@@ -26,6 +27,10 @@ exports.getAllPayments = async (req, res) => {
 
     const payments = await Payment.find(filter)
       .populate("madeBy", "username email phone")
+      .populate({
+        path: "companyId",
+        select: "name address contact_email",
+      })
       .populate({
         path: "invoice_ids",
         select:
@@ -70,6 +75,10 @@ exports.getPaymentById = async (req, res) => {
     const payment = await Payment.findById(id)
       .populate("madeBy", "username email phone")
       .populate({
+        path: "companyId",
+        select: "name address contact_email",
+      })
+      .populate({
         path: "invoice_ids",
         select:
           "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
@@ -107,6 +116,10 @@ exports.getMyPayments = async (req, res) => {
 
     const payments = await Payment.find(filter)
       .populate({
+        path: "companyId",
+        select: "name address contact_email",
+      })
+      .populate({
         path: "invoice_ids",
         select:
           "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
@@ -117,6 +130,37 @@ exports.getMyPayments = async (req, res) => {
       .lean(); // Use lean() to get plain objects and avoid virtuals
 
     const total = await Payment.countDocuments(filter);
+
+    // Calculate total amount of all payments (not just current page)
+    // Only sum successful payments (vnp_ResponseCode === "00")
+    // Use the same filter as above (madeBy: userId) and filter by vnp_ResponseCode in the query
+    const totalAmountFilter = {
+      madeBy: userId, // Same userId used in filter above
+    };
+
+    if (type) {
+      totalAmountFilter.type = type;
+    }
+
+    // Query all payments for this user (without pagination) for total calculation
+    // Filter successful payments in the query
+    const allPaymentsForTotal = await Payment.find(totalAmountFilter)
+      .select("vnp_Amount vnp_ResponseCode")
+      .lean();
+
+    // Calculate total amount by summing only successful payments (vnp_ResponseCode === "00")
+    const total_amount = allPaymentsForTotal.reduce((sum, payment) => {
+      // Only count successful payments
+      if (
+        payment.vnp_ResponseCode === "00" &&
+        payment.vnp_Amount != null &&
+        typeof payment.vnp_Amount === "number" &&
+        payment.vnp_Amount > 0
+      ) {
+        return sum + payment.vnp_Amount;
+      }
+      return sum;
+    }, 0);
 
     // Filter out null invoices from invoice_ids array
     const formattedPayments = payments.map((payment) => {
@@ -130,6 +174,7 @@ exports.getMyPayments = async (req, res) => {
 
     res.status(200).json({
       payments: formattedPayments,
+      total_amount: total_amount,
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(total / parseInt(limit)),
@@ -154,6 +199,10 @@ exports.getPaymentsByUserId = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const payments = await Payment.find(filter)
+      .populate({
+        path: "companyId",
+        select: "name address contact_email",
+      })
       .populate({
         path: "invoice_ids",
         select:
@@ -663,11 +712,24 @@ exports.payForChargingReturn = async (req, res) => {
       // Import Invoice model
       const Invoice = require("../models/Invoice");
 
-      // ✅ Tạo bản ghi thanh toán (lưu tất cả invoice IDs)
+      // ✅ Lấy company_id từ account của user thanh toán
+      let companyId = null;
+      try {
+        const userAccount = await Account.findById(userId).select("company_id");
+        if (userAccount && userAccount.company_id) {
+          companyId = userAccount.company_id;
+        }
+      } catch (accountError) {
+        console.error("Error fetching user account:", accountError);
+        // Tiếp tục với companyId = null nếu không tìm thấy account
+      }
+
+      // ✅ Tạo bản ghi thanh toán (lưu tất cả invoice IDs và companyId)
       const newPayment = new Payment({
         madeBy: userId,
         type: "charging",
         invoice_ids: invoiceIdArray, // Lưu tất cả invoice IDs vào array
+        companyId: companyId, // Lưu company_id từ account (null nếu không có)
         vnp_TxnRef: queryParams.vnp_TxnRef,
         vnp_Amount: Number(queryParams.vnp_Amount) / 100,
         vnp_OrderInfo: decodedOrderInfo,

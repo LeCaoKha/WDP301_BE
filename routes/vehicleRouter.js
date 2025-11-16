@@ -11,7 +11,11 @@ router.get("/me", authenticateToken, vehicleController.getMyVehicles);
 router.get("/:id", authenticateToken, vehicleController.getVehicleById);
 router.put("/:id", authenticateToken, vehicleController.updateVehicleById);
 router.delete("/:id", authenticateToken, vehicleController.deleteVehicleById);
-router.post("/:id/restore", authenticateToken, vehicleController.restoreVehicle);
+router.post(
+  "/:id/restore",
+  authenticateToken,
+  vehicleController.restoreVehicle
+);
 
 module.exports = router;
 
@@ -446,7 +450,8 @@ module.exports = router;
  *     description: |
  *       Soft delete a vehicle by marking it as inactive (isActive = false).
  *       Vehicle data is preserved for historical records. Charging history and invoices remain intact.
- *       
+ *       **All associated VehicleSubscriptions will be automatically deleted (hard delete).**
+ *
  *       **Requirements before deletion:**
  *       - No active bookings (pending, confirmed, active)
  *       - No active charging sessions (pending, in_progress)
@@ -496,11 +501,30 @@ module.exports = router;
  *                       format: date-time
  *                     deletedReason:
  *                       type: string
+ *                 deleted_subscriptions_count:
+ *                   type: integer
+ *                   description: Number of VehicleSubscriptions that were deleted
+ *                   example: 2
  *                 note:
  *                   type: string
- *                   example: "Vehicle data is preserved for historical records. Charging history and invoices remain intact."
+ *                   example: "Vehicle data is preserved for historical records. Charging history and invoices remain intact. All associated vehicle subscriptions have been deleted."
  *       400:
  *         description: Cannot delete vehicle (has active bookings/sessions/unpaid invoices)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 active_bookings_count:
+ *                   type: integer
+ *                 active_sessions_count:
+ *                   type: integer
+ *                 unpaid_count:
+ *                   type: integer
+ *                 note:
+ *                   type: string
  *       401:
  *         description: Access token required
  *       403:
