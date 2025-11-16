@@ -275,7 +275,12 @@ exports.endSession = async (req, res) => {
     if (seconds > 0 || totalSeconds === 0) durationFormatted += `${seconds} giây`;
     durationFormatted = durationFormatted.trim();
     
+    // ============== CHECK IF DIRECT CHARGING (NO BASE FEE) =================
+    const is_direct_charging = session.is_direct_charging || false;
+    
     // ============== CHECK SUBSCRIPTION & APPLY DISCOUNT =================
+    // ✅ DISCOUNT CHỈ ÁP DỤNG CHO CHARGING_FEE, KHÔNG ÁP DỤNG CHO BASE_FEE
+    // Base fee đã được thanh toán khi confirm booking (hoặc = 0 nếu direct charging)
     const VehicleSubscription = require('../models/VehicleSubscription');
     const SubscriptionPlan = require('../models/SubscriptionPlan');
     
@@ -283,7 +288,9 @@ exports.endSession = async (req, res) => {
     let discount_amount = 0;
     let subscription_id = null;
     let subscription_plan_name = null;
-    const original_amount = calculation.total_amount;
+    const original_charging_fee = calculation.charging_fee;
+    // ✅ Direct charging: base_fee = 0, Booking: base_fee từ calculation
+    const base_fee = is_direct_charging ? 0 : calculation.base_fee;
     
     // Check if vehicle has active subscription
     if (vehicle.vehicle_subscription_id) {
@@ -305,8 +312,8 @@ exports.endSession = async (req, res) => {
             discount_percentage = parseFloat(discountString.replace('%', '').trim()) || 0;
             
             if (discount_percentage > 0 && discount_percentage <= 100) {
-              // Apply discount to total_amount
-              discount_amount = Math.round((original_amount * discount_percentage) / 100);
+              // ✅ DISCOUNT CHỈ ÁP DỤNG CHO CHARGING_FEE
+              discount_amount = Math.round((original_charging_fee * discount_percentage) / 100);
               subscription_id = vehicleSubscription._id;
               subscription_plan_name = subscriptionPlan.name;
             }
@@ -318,8 +325,9 @@ exports.endSession = async (req, res) => {
       }
     }
     
-    // Calculate final amount after discount
-    const final_amount_after_discount = original_amount - discount_amount;
+    // Calculate discounted charging fee and final total amount
+    const discounted_charging_fee = original_charging_fee - discount_amount;
+    const final_total_amount = base_fee + discounted_charging_fee; // ✅ Base fee không bị discount
     
     const invoice = await Invoice.create({
       // References
@@ -357,9 +365,9 @@ exports.endSession = async (req, res) => {
       // Pricing
       base_fee: calculation.base_fee,
       price_per_kwh: calculation.price_per_kwh,
-      charging_fee: calculation.charging_fee,
-      original_amount: original_amount, // ✅ Tổng tiền trước discount
-      total_amount: final_amount_after_discount, // ✅ Tổng tiền sau discount
+      charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount (để lưu vào invoice)
+      original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount (để lưu vào invoice)
+      total_amount: final_total_amount, // ✅ Base fee + discounted charging fee
       
       // Subscription Discount (NEW)
       subscription_id: subscription_id,
@@ -421,14 +429,16 @@ exports.endSession = async (req, res) => {
         base_fee: calculation.base_fee,
         price_per_kwh: calculation.price_per_kwh,
         energy_charged: calculation.actual_energy_delivered_kwh + ' kWh',
-        charging_fee: calculation.charging_fee,
-        original_amount: original_amount,
-        total_amount: final_amount_after_discount,
+        original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount
+        charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount
+        total_amount: final_total_amount, // ✅ Base fee + discounted charging fee
         
-        base_fee_formatted: calculation.base_fee.toLocaleString('vi-VN') + ' đ',
-        charging_fee_formatted: calculation.charging_fee.toLocaleString('vi-VN') + ' đ',
-        original_amount_formatted: original_amount.toLocaleString('vi-VN') + ' đ',
-        total_amount_formatted: final_amount_after_discount.toLocaleString('vi-VN') + ' đ',
+        base_fee_formatted: is_direct_charging 
+          ? '0 đ (không có phí cơ bản - direct charging)'
+          : calculation.base_fee.toLocaleString('vi-VN') + ' đ',
+        original_charging_fee_formatted: original_charging_fee.toLocaleString('vi-VN') + ' đ',
+        charging_fee_formatted: discounted_charging_fee.toLocaleString('vi-VN') + ' đ',
+        total_amount_formatted: final_total_amount.toLocaleString('vi-VN') + ' đ',
         
         // Subscription discount info (if applicable)
         ...(discount_amount > 0 && {
@@ -436,12 +446,17 @@ exports.endSession = async (req, res) => {
             plan_name: subscription_plan_name,
             discount_percentage: discount_percentage + '%',
             discount_amount: discount_amount.toLocaleString('vi-VN') + ' đ',
+            note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
           }
         }),
         
-        breakdown: discount_amount > 0
-          ? `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_amount.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${final_amount_after_discount.toLocaleString('vi-VN')} đ`
-          : `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${final_amount_after_discount.toLocaleString('vi-VN')} đ`,
+        breakdown: is_direct_charging
+          ? discount_amount > 0
+            ? `${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_charging_fee.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ (không có phí cơ bản)`
+            : `${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ (không có phí cơ bản)`
+          : discount_amount > 0
+            ? `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_charging_fee.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ`
+            : `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ`,
       },
       
       invoice: {
@@ -456,8 +471,11 @@ exports.endSession = async (req, res) => {
         session_id: session._id,
         user_id: booking.user_id,
         vehicle_id: vehicle._id,
-        amount: final_amount_after_discount, // ✅ Amount sau discount
+        amount: discounted_charging_fee, // ✅ Chỉ thanh toán charging fee
         invoice_id: invoice._id,
+        note: is_direct_charging 
+          ? 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
+          : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.',
       },
     });
   } catch (error) {
@@ -793,7 +811,8 @@ exports.startDirectCharging = async (req, res) => {
       current_battery_percentage: initial_battery_percentage,
       target_battery_percentage: target,
       price_per_kwh: price_per_kwh,
-      base_fee: base_fee,
+      base_fee: 0, // ✅ Direct charging: KHÔNG CÓ BASE FEE
+      is_direct_charging: true, // ✅ Đánh dấu là direct charging
     });
 
     // Update charging point status to in_use
@@ -853,8 +872,9 @@ exports.startDirectCharging = async (req, res) => {
           address: station.address,
         },
         pricing: {
-          base_fee: session.base_fee.toLocaleString('vi-VN') + ' đ',
+          base_fee: '0 đ (không có phí cơ bản - direct charging)',
           price_per_kwh: session.price_per_kwh.toLocaleString('vi-VN') + ' đ/kWh',
+          note: 'Direct charging: Chỉ tính phí sạc theo năng lượng sử dụng, không có phí cơ bản.',
         },
         estimated_time: estimated_time_info,
       },

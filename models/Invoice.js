@@ -133,13 +133,20 @@ const invoiceSchema = new mongoose.Schema(
     charging_fee: {
       type: Number,
       required: true,
+      // = energy_delivered_kwh × price_per_kwh - discount_amount (nếu có subscription)
+      // ✅ CHARGING FEE SAU KHI ÁP DỤNG DISCOUNT
+    },
+    original_charging_fee: {
+      type: Number,
+      // ✅ CHARGING FEE TRƯỚC KHI ÁP DỤNG DISCOUNT
       // = energy_delivered_kwh × price_per_kwh
     },
     total_amount: {
       type: Number, // 💰 TỔNG TIỀN (SAU KHI ÁP DỤNG DISCOUNT)
       required: true,
       index: true, // ✅ THỐNG KÊ DOANH THU NHANH
-      // = base_fee + charging_fee - discount_amount (nếu có subscription)
+      // = base_fee + charging_fee (charging_fee đã được discount)
+      // ✅ LƯU Ý: Base fee KHÔNG bị discount, chỉ charging fee bị discount
     },
 
     // ============== SUBSCRIPTION DISCOUNT ==============
@@ -148,22 +155,19 @@ const invoiceSchema = new mongoose.Schema(
       ref: "VehicleSubscription",
       // ✅ ID của subscription được áp dụng (nếu có)
     },
-    original_amount: {
-      type: Number,
-      // ✅ TỔNG TIỀN TRƯỚC KHI ÁP DỤNG DISCOUNT
-      // = base_fee + charging_fee
-    },
     discount_percentage: {
       type: Number,
       min: 0,
       max: 100,
       // ✅ % GIẢM GIÁ TỪ SUBSCRIPTION (ví dụ: 15, 30)
+      // ✅ CHỈ ÁP DỤNG CHO CHARGING_FEE, KHÔNG ÁP DỤNG CHO BASE_FEE
     },
     discount_amount: {
       type: Number,
       min: 0,
       // ✅ SỐ TIỀN ĐƯỢC GIẢM (VND)
-      // = original_amount × discount_percentage / 100
+      // = original_charging_fee × discount_percentage / 100
+      // ✅ CHỈ GIẢM CHARGING_FEE, KHÔNG GIẢM BASE_FEE
     },
 
     // ============== PAYMENT ==============

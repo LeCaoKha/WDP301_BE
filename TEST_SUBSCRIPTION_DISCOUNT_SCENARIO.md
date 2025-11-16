@@ -90,10 +90,10 @@ POST /api/charging-sessions/<session_id>/end
     "base_fee": 10000,
     "price_per_kwh": 3000,
     "energy_charged": "37.50 kWh",
-    "charging_fee": 112500,
-    "original_amount": 122500,
-    "total_amount": 122500,  // ✅ KHÔNG CÓ DISCOUNT
-    "breakdown": "10,000 đ (phí cơ bản) + 37.50 kWh × 3,000 đ/kWh = 122,500 đ"
+    "original_charging_fee": 112500,
+    "charging_fee": 112500,  // ✅ KHÔNG CÓ DISCOUNT
+    "total_amount": 122500,  // ✅ Base fee + charging fee
+    "breakdown": "10,000 đ (phí cơ bản - đã thanh toán) + 37.50 kWh × 3,000 đ/kWh = 112,500 đ → Tổng: 122,500 đ"
     // ✅ KHÔNG CÓ subscription_discount field
   }
 }
@@ -109,10 +109,10 @@ GET /api/invoices/<invoice_id>
 {
   "pricing": {
     "base_fee": 10000,
-    "charging_fee": 112500,
-    "original_amount": 122500,
-    "total_amount": 122500,  // ✅ KHÔNG CÓ DISCOUNT
-    "breakdown": "10,000 đ (phí cơ bản) + 37.50 kWh × 3,000 đ/kWh = 122,500 đ"
+    "original_charging_fee": 112500,
+    "charging_fee": 112500,  // ✅ KHÔNG CÓ DISCOUNT
+    "total_amount": 122500,  // ✅ Base fee + charging fee
+    "breakdown": "10,000 đ (phí cơ bản - đã thanh toán) + 37.50 kWh × 3,000 đ/kWh = 112,500 đ → Tổng: 122,500 đ"
     // ✅ KHÔNG CÓ subscription_discount field
   }
 }
@@ -186,15 +186,16 @@ POST /api/charging-sessions/<session_id>/end
     "base_fee": 10000,
     "price_per_kwh": 3000,
     "energy_charged": "37.50 kWh",
-    "charging_fee": 112500,
-    "original_amount": 122500,  // ✅ Tổng tiền TRƯỚC discount
-    "total_amount": 104125,     // ✅ Tổng tiền SAU discount (122500 - 18375)
+    "original_charging_fee": 112500,  // ✅ Charging fee TRƯỚC discount
+    "charging_fee": 95625,             // ✅ Charging fee SAU discount (112500 - 16875)
+    "total_amount": 105625,            // ✅ Base fee + discounted charging fee (10000 + 95625)
     "subscription_discount": {
       "plan_name": "Premium Plan",
       "discount_percentage": "15%",
-      "discount_amount": "18,375 đ"  // ✅ 15% của 122500 = 18375
+      "discount_amount": "16,875 đ",  // ✅ 15% của 112500 (charging_fee) = 16875
+      "note": "Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)"
     },
-    "breakdown": "10,000 đ (phí cơ bản) + 37.50 kWh × 3,000 đ/kWh = 122,500 đ - 18,375 đ (giảm 15% từ gói Premium Plan) = 104,125 đ"
+    "breakdown": "10,000 đ (phí cơ bản - đã thanh toán) + 37.50 kWh × 3,000 đ/kWh = 112,500 đ - 16,875 đ (giảm 15% từ gói Premium Plan) = 95,625 đ → Tổng: 105,625 đ"
   }
 }
 ```
@@ -209,15 +210,16 @@ GET /api/invoices/<invoice_id>
 {
   "pricing": {
     "base_fee": 10000,
-    "charging_fee": 112500,
-    "original_amount": 122500,  // ✅ Tổng tiền TRƯỚC discount
-    "total_amount": 104125,     // ✅ Tổng tiền SAU discount
+    "original_charging_fee": 112500,  // ✅ Charging fee TRƯỚC discount
+    "charging_fee": 95625,            // ✅ Charging fee SAU discount
+    "total_amount": 105625,           // ✅ Base fee + discounted charging fee
     "subscription_discount": {
       "discount_percentage": "15%",
-      "discount_amount": "18,375 đ",
-      "subscription_id": "<vehicle_subscription_id>"
+      "discount_amount": "16,875 đ",
+      "subscription_id": "<vehicle_subscription_id>",
+      "note": "Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)"
     },
-    "breakdown": "10,000 đ (phí cơ bản) + 37.50 kWh × 3,000 đ/kWh = 122,500 đ - 18,375 đ (giảm 15%) = 104,125 đ"
+    "breakdown": "10,000 đ (phí cơ bản - đã thanh toán) + 37.50 kWh × 3,000 đ/kWh = 112,500 đ - 16,875 đ (giảm 15%) = 95,625 đ → Tổng: 105,625 đ"
   }
 }
 ```
@@ -267,12 +269,13 @@ PATCH /api/vehicles/<vehicle_id>
 ```json
 {
   "fee_calculation": {
-    "original_amount": 122500,
-    "total_amount": 85750,  // ✅ 122500 - 36750 (30% discount)
+    "original_charging_fee": 112500,
+    "charging_fee": 78750,   // ✅ 112500 - 33750 (30% discount của charging_fee)
+    "total_amount": 88750,   // ✅ 10000 + 78750 (base_fee + discounted charging_fee)
     "subscription_discount": {
       "plan_name": "Super Premium Plan",
       "discount_percentage": "30%",
-      "discount_amount": "36,750 đ"  // ✅ 30% của 122500 = 36750
+      "discount_amount": "33,750 đ"  // ✅ 30% của 112500 (charging_fee) = 33750
     }
   }
 }
@@ -300,7 +303,9 @@ PATCH /api/vehicles/<vehicle_id>
 ```json
 {
   "fee_calculation": {
-    "total_amount": 122500,  // ✅ KHÔNG CÓ DISCOUNT vì subscription hết hạn
+    "original_charging_fee": 112500,
+    "charging_fee": 112500,  // ✅ KHÔNG CÓ DISCOUNT vì subscription hết hạn
+    "total_amount": 122500,  // ✅ Base fee + charging fee
     // ✅ KHÔNG CÓ subscription_discount field
   }
 }
@@ -366,7 +371,9 @@ POST /api/subscription-plans
 ```json
 {
   "fee_calculation": {
-    "total_amount": 122500,  // ✅ KHÔNG CÓ DISCOUNT
+    "original_charging_fee": 112500,
+    "charging_fee": 112500,  // ✅ KHÔNG CÓ DISCOUNT
+    "total_amount": 122500,  // ✅ Base fee + charging fee
     // ✅ KHÔNG CÓ subscription_discount field
   }
 }
@@ -388,32 +395,43 @@ POST /api/subscription-plans
 
 ## Công thức tính toán
 
+### ✅ LƯU Ý QUAN TRỌNG:
+- **Base fee** đã được thanh toán khi confirm booking → **KHÔNG bị discount**
+- **Discount chỉ áp dụng cho charging_fee**, không áp dụng cho base_fee
+
 ### Không có Subscription:
 ```
+original_charging_fee = energy_delivered_kwh × price_per_kwh
+charging_fee = original_charging_fee
 total_amount = base_fee + charging_fee
 ```
 
 ### Có Subscription (discount X%):
 ```
-original_amount = base_fee + charging_fee
-discount_amount = original_amount × (discount_percentage / 100)
-total_amount = original_amount - discount_amount
+original_charging_fee = energy_delivered_kwh × price_per_kwh
+discount_amount = original_charging_fee × (discount_percentage / 100)
+charging_fee = original_charging_fee - discount_amount
+total_amount = base_fee + charging_fee
 ```
 
 ### Ví dụ:
-- base_fee = 10,000 đ
-- charging_fee = 112,500 đ (37.5 kWh × 3,000 đ/kWh)
-- original_amount = 122,500 đ
+- base_fee = 10,000 đ (đã thanh toán khi confirm booking)
+- original_charging_fee = 112,500 đ (37.5 kWh × 3,000 đ/kWh)
 - discount_percentage = 15%
-- discount_amount = 122,500 × 0.15 = 18,375 đ
-- total_amount = 122,500 - 18,375 = 104,125 đ
+- discount_amount = 112,500 × 0.15 = 16,875 đ (chỉ discount charging_fee)
+- charging_fee = 112,500 - 16,875 = 95,625 đ
+- total_amount = 10,000 + 95,625 = 105,625 đ
 
 ---
 
 ## Lưu ý
 
-1. **original_amount** luôn = base_fee + charging_fee
-2. **total_amount** = original_amount - discount_amount (nếu có discount)
-3. Nếu không có subscription hoặc subscription hết hạn: total_amount = original_amount
-4. discount_amount chỉ có khi subscription active và có discount > 0
-5. Tất cả các field discount được lưu trong Invoice để audit trail
+1. **Base fee** đã được thanh toán khi confirm booking → **KHÔNG bị discount**
+2. **original_charging_fee** = energy_delivered_kwh × price_per_kwh (trước discount)
+3. **charging_fee** = original_charging_fee - discount_amount (sau discount, nếu có)
+4. **total_amount** = base_fee + charging_fee (charging_fee đã được discount nếu có)
+5. **discount_amount** chỉ áp dụng cho charging_fee, không áp dụng cho base_fee
+6. Nếu không có subscription hoặc subscription hết hạn: charging_fee = original_charging_fee
+7. discount_amount chỉ có khi subscription active và có discount > 0
+8. Tất cả các field discount được lưu trong Invoice để audit trail
+9. Khi list invoice, **total_amount** đã là giá sau discount (nếu có)

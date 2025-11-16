@@ -113,6 +113,14 @@ const chargingSessionSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    
+    // ============== DIRECT CHARGING FLAG ==============
+    is_direct_charging: {
+      type: Boolean,
+      default: false,
+      // ✅ TRUE: Session được tạo từ direct charging (không qua booking trước)
+      // ✅ FALSE: Session được tạo từ booking (có base fee)
+    },
   },
   {
     timestamps: true,

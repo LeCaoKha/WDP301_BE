@@ -2,6 +2,74 @@ const Invoice = require('../models/Invoice');
 const ChargingSession = require('../models/ChargingSession');
 const { default: mongoose } = require('mongoose');
 
+// ============== HELPER FUNCTION: FORMAT INVOICE FULL DETAIL ==============
+/**
+ * Format invoice với đầy đủ thông tin như invoice detail
+ * @param {Object} inv - Invoice object từ database
+ * @returns {Object} Formatted invoice object
+ */
+const formatInvoiceFullDetail = (inv) => {
+  return {
+    // Invoice Info
+    id: inv._id,
+    session_id: inv.session_id,
+    user_id: inv.user_id,
+    booking_id: inv.booking_id,
+    vehicle_id: inv.vehicle_id,
+    station_id: inv.station_id,
+    chargingPoint_id: inv.chargingPoint_id,
+    created_at: inv.createdAt,
+    updated_at: inv.updatedAt,
+    
+    // Station Info
+    station_name: inv.station_name,
+    station_address: inv.station_address,
+    
+    // Vehicle Info
+    vehicle_plate_number: inv.vehicle_plate_number,
+    vehicle_model: inv.vehicle_model,
+    vehicle_is_active: inv.vehicle_id?.isActive || false,
+    
+    // Charging Session
+    start_time: inv.start_time,
+    end_time: inv.end_time,
+    charging_duration_seconds: inv.charging_duration_seconds,
+    charging_duration_minutes: inv.charging_duration_minutes,
+    charging_duration_hours: inv.charging_duration_hours,
+    charging_duration_formatted: inv.charging_duration_formatted,
+    
+    initial_battery_percentage: inv.initial_battery_percentage,
+    final_battery_percentage: inv.final_battery_percentage,
+    target_battery_percentage: inv.target_battery_percentage,
+    battery_charged_percentage: inv.battery_charged_percentage,
+    target_reached: inv.target_reached,
+    
+    battery_capacity_kwh: inv.battery_capacity_kwh,
+    power_capacity_kw: inv.power_capacity_kw,
+    energy_delivered_kwh: inv.energy_delivered_kwh,
+    charging_efficiency: inv.charging_efficiency,
+    calculation_method: inv.calculation_method,
+    
+    // Pricing
+    base_fee: inv.base_fee,
+    price_per_kwh: inv.price_per_kwh,
+    original_charging_fee: inv.original_charging_fee || inv.charging_fee,
+    charging_fee: inv.charging_fee,
+    total_amount: inv.total_amount,
+    
+    // Subscription Discount
+    subscription_id: inv.subscription_id || null,
+    discount_percentage: inv.discount_percentage || null,
+    discount_amount: inv.discount_amount || null,
+    
+    // Payment
+    payment_status: inv.payment_status,
+    payment_method: inv.payment_method,
+    payment_date: inv.payment_date || null,
+    transaction_id: inv.transaction_id || null,
+  };
+};
+
 // ============== GET ALL INVOICES (ADMIN) ==============
 exports.getAllInvoices = async (req, res) => {
   try {
@@ -43,26 +111,8 @@ exports.getAllInvoices = async (req, res) => {
       },
     ]);
 
-    // ✅ FORMAT RESPONSE VỚI DATA ĐÃ LƯU TRONG INVOICE
-    const formattedInvoices = invoices.map((inv) => ({
-      id: inv._id,
-      created_at: inv.createdAt,
-
-      // ✅ LẤY TỪ INVOICE (đã lưu sẵn)
-      station: inv.station_name,
-      address: inv.station_address,
-      vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
-      vehicle_is_active: inv.vehicle_id?.isActive || false,
-      start_time: inv.start_time,
-      end_time: inv.end_time,
-      duration: inv.charging_duration_formatted,
-      duration_seconds: inv.charging_duration_seconds,
-      energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
-      battery_charged: `${inv.battery_charged_percentage}%`,
-      total_amount: `${inv.total_amount.toLocaleString('vi-VN')} đ`,
-      payment_status: inv.payment_status,
-      payment_method: inv.payment_method,
-    }));
+    // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
+    const formattedInvoices = invoices.map(inv => formatInvoiceFullDetail(inv));
 
     res.status(200).json({
       invoices: formattedInvoices,
@@ -125,27 +175,8 @@ exports.getUserInvoices = async (req, res) => {
     const unpaid = summary.find(s => s._id === 'unpaid') || { count: 0, total_amount: 0, total_energy: 0 };
     const paid = summary.find(s => s._id === 'paid') || { count: 0, total_amount: 0, total_energy: 0 };
     
-    const formattedInvoices = invoices.map(inv => ({
-      id: inv._id,
-      created_at: inv.createdAt,
-      
-      station: inv.station_name,
-      address: inv.station_address,
-      vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
-      vehicle_is_active: inv.vehicle_id?.isActive || false,
-      
-      duration: inv.charging_duration_formatted,
-      duration_seconds: inv.charging_duration_seconds,
-      energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
-      battery_charged: `${inv.battery_charged_percentage}%`,
-      
-      // ✅ Hiển thị số tiền cần trả (unpaid = charging_fee, paid = total_amount)
-      total_amount: inv.payment_status === 'unpaid' 
-        ? `${inv.charging_fee.toLocaleString('vi-VN')} đ`
-        : `${inv.total_amount.toLocaleString('vi-VN')} đ`,
-      payment_status: inv.payment_status,
-      payment_method: inv.payment_method,
-    }));
+    // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
+    const formattedInvoices = invoices.map(inv => formatInvoiceFullDetail(inv));
     
     res.status(200).json({
       invoices: formattedInvoices,
@@ -231,15 +262,13 @@ exports.getInvoiceDetail = async (req, res) => {
         price_per_kwh_formatted: `${invoice.price_per_kwh.toLocaleString(
           'vi-VN'
         )} đ/kWh`,
-        charging_fee: invoice.charging_fee,
+        original_charging_fee: invoice.original_charging_fee || invoice.charging_fee,
+        original_charging_fee_formatted: `${(invoice.original_charging_fee || invoice.charging_fee).toLocaleString('vi-VN')} đ`,
+        charging_fee: invoice.charging_fee, // ✅ Đã được discount (nếu có)
         charging_fee_formatted: `${invoice.charging_fee.toLocaleString(
           'vi-VN'
         )} đ`,
-        original_amount: invoice.original_amount || invoice.total_amount,
-        original_amount_formatted: `${(invoice.original_amount || invoice.total_amount).toLocaleString(
-          'vi-VN'
-        )} đ`,
-        total_amount: invoice.total_amount,
+        total_amount: invoice.total_amount, // ✅ Base fee + discounted charging fee
         total_amount_formatted: `${invoice.total_amount.toLocaleString(
           'vi-VN'
         )} đ`,
@@ -249,11 +278,12 @@ exports.getInvoiceDetail = async (req, res) => {
             discount_percentage: `${invoice.discount_percentage}%`,
             discount_amount: `${invoice.discount_amount.toLocaleString('vi-VN')} đ`,
             subscription_id: invoice.subscription_id,
+            note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
           }
         }),
         breakdown: invoice.discount_amount > 0
-          ? `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${(invoice.original_amount || invoice.total_amount).toLocaleString('vi-VN')} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${invoice.discount_percentage}%) = ${invoice.total_amount.toLocaleString('vi-VN')} đ`
-          : `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+          ? `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${(invoice.original_charging_fee || invoice.charging_fee).toLocaleString('vi-VN')} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${invoice.discount_percentage}%) = ${invoice.charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${invoice.total_amount.toLocaleString('vi-VN')} đ`
+          : `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${invoice.charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${invoice.total_amount.toLocaleString('vi-VN')} đ`,
       },
       payment: {
         status: invoice.payment_status,
@@ -340,19 +370,8 @@ exports.getUnpaidInvoices = async (req, res) => {
     // ✅ Tổng unpaid chỉ tính charging_fee
     const totalUnpaid = invoices.reduce((sum, inv) => sum + inv.charging_fee, 0);
     
-    const formattedInvoices = invoices.map(inv => ({
-      id: inv._id,
-      created_at: inv.createdAt,
-      station: inv.station_name,
-      vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
-      vehicle_is_active: inv.vehicle_id?.isActive || false,
-      energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
-      // ✅ Chỉ hiển thị charging_fee
-      charging_fee: `${inv.charging_fee.toLocaleString('vi-VN')} đ`,
-      base_fee_paid: `${inv.base_fee.toLocaleString('vi-VN')} đ`,
-      duration: inv.charging_duration_formatted,
-      duration_seconds: inv.charging_duration_seconds,
-    }));
+    // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
+    const formattedInvoices = invoices.map(inv => formatInvoiceFullDetail(inv));
     
     res.status(200).json({
       unpaid_invoices: formattedInvoices,
@@ -458,40 +477,23 @@ exports.getCompanyDriversInvoices = async (req, res) => {
     const paid = summary.find(s => s._id === 'paid') || { count: 0, total_amount: 0, total_energy: 0 };
     const refunded = summary.find(s => s._id === 'refunded') || { count: 0, total_amount: 0, total_energy: 0 };
 
-    // ✅ 6. Format response với thông tin driver
+    // ✅ 6. Format response với thông tin driver + đầy đủ invoice detail
     const formattedInvoices = invoices.map(inv => {
       const vehicle = companyVehicles.find(v => v._id.toString() === inv.vehicle_id.toString());
       const driver = companyDrivers.find(d => d._id.toString() === vehicle?.user_id.toString());
 
+      // Format invoice đầy đủ
+      const invoiceDetail = formatInvoiceFullDetail(inv);
+      
+      // Thêm thông tin driver
       return {
-        id: inv._id,
-        created_at: inv.createdAt,
-        
+        ...invoiceDetail,
         // Driver info
         driver: {
           id: driver?._id,
           username: driver?.username,
           email: driver?.email
         },
-
-        // Invoice info
-        station: inv.station_name,
-        address: inv.station_address,
-        vehicle: `${inv.vehicle_model} - ${inv.vehicle_plate_number}`,
-        vehicle_is_active: inv.vehicle_id?.isActive || false,
-        
-        duration: inv.charging_duration_formatted,
-        duration_seconds: inv.charging_duration_seconds,
-        energy_delivered: `${inv.energy_delivered_kwh.toFixed(2)} kWh`,
-        battery_charged: `${inv.battery_charged_percentage}%`,
-        
-        total_amount: inv.payment_status === 'unpaid'
-          ? `${inv.charging_fee.toLocaleString('vi-VN')} đ`
-          : `${inv.total_amount.toLocaleString('vi-VN')} đ`,
-        
-        payment_status: inv.payment_status,
-        payment_method: inv.payment_method,
-        payment_date: inv.payment_date
       };
     });
 
