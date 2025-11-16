@@ -602,10 +602,6 @@ function buildSwaggerSpec(baseUrl) {
           description: "Charging station booking endpoints",
         },
         {
-          name: "ChargingSession",
-          description: "Charging session and QR code endpoints",
-        },
-        {
           name: "Payment",
           description:
             "Payment processing with VNPay for subscriptions, charging fees, and base fees",

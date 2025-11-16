@@ -235,17 +235,25 @@ exports.getInvoiceDetail = async (req, res) => {
         charging_fee_formatted: `${invoice.charging_fee.toLocaleString(
           'vi-VN'
         )} đ`,
+        original_amount: invoice.original_amount || invoice.total_amount,
+        original_amount_formatted: `${(invoice.original_amount || invoice.total_amount).toLocaleString(
+          'vi-VN'
+        )} đ`,
         total_amount: invoice.total_amount,
         total_amount_formatted: `${invoice.total_amount.toLocaleString(
           'vi-VN'
         )} đ`,
-        breakdown: `${invoice.base_fee.toLocaleString(
-          'vi-VN'
-        )} đ (phí cơ bản) + ${invoice.energy_delivered_kwh.toFixed(
-          2
-        )} kWh × ${invoice.price_per_kwh.toLocaleString(
-          'vi-VN'
-        )} đ/kWh = ${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+        // Subscription discount (if applicable)
+        ...(invoice.discount_amount > 0 && {
+          subscription_discount: {
+            discount_percentage: `${invoice.discount_percentage}%`,
+            discount_amount: `${invoice.discount_amount.toLocaleString('vi-VN')} đ`,
+            subscription_id: invoice.subscription_id,
+          }
+        }),
+        breakdown: invoice.discount_amount > 0
+          ? `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${(invoice.original_amount || invoice.total_amount).toLocaleString('vi-VN')} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${invoice.discount_percentage}%) = ${invoice.total_amount.toLocaleString('vi-VN')} đ`
+          : `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${invoice.total_amount.toLocaleString('vi-VN')} đ`,
       },
       payment: {
         status: invoice.payment_status,

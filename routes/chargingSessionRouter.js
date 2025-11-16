@@ -277,6 +277,192 @@ router.post('/start', chargingSessionController.startSessionByQr);
 
 /**
  * @swagger
+ * /api/charging-sessions/start-direct:
+ *   post:
+ *     summary: Bắt đầu sạc trực tiếp không cần booking trước (Walk-in)
+ *     description: |
+ *       API này cho phép người dùng đến trạm sạc và bắt đầu sạc ngay lập tức mà không cần booking trước.
+ *       Hệ thống sẽ tự động tạo booking và bắt đầu session sạc.
+ *       
+ *       **Use case:** Người dùng đến trạm sạc trực tiếp (walk-in customer)
+ *     tags: [Charging Sessions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - user_id
+ *               - vehicle_id
+ *               - chargingPoint_id
+ *               - initial_battery_percentage
+ *             properties:
+ *               user_id:
+ *                 type: string
+ *                 description: ID của user
+ *                 example: "690db6df9c04bf86b32651a6"
+ *               vehicle_id:
+ *                 type: string
+ *                 description: ID của xe
+ *                 example: "690db6df9c04bf86b32651a7"
+ *               chargingPoint_id:
+ *                 type: string
+ *                 description: ID của charging point (type offline hoặc online)
+ *                 example: "690db6df9c04bf86b32651a8"
+ *               initial_battery_percentage:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: % pin hiện tại của xe
+ *                 example: 30
+ *               target_battery_percentage:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: % pin muốn sạc đến (mặc định 100%)
+ *                 example: 80
+ *     responses:
+ *       201:
+ *         description: Session sạc đã được tạo và bắt đầu thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Direct charging session started successfully
+ *                 session:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     booking_id:
+ *                       type: string
+ *                       description: ID của booking tự động được tạo
+ *                     start_time:
+ *                       type: string
+ *                       format: date-time
+ *                     initial_battery:
+ *                       type: string
+ *                       example: "30%"
+ *                     target_battery:
+ *                       type: string
+ *                       example: "80%"
+ *                     status:
+ *                       type: string
+ *                       example: in_progress
+ *                     charging_point:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         type:
+ *                           type: string
+ *                           enum: [offline, online]
+ *                         power_capacity:
+ *                           type: string
+ *                           example: "150 kW"
+ *                     vehicle:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         plate_number:
+ *                           type: string
+ *                         model:
+ *                           type: string
+ *                         battery_capacity:
+ *                           type: string
+ *                           example: "80 kWh"
+ *                     station:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         address:
+ *                           type: string
+ *                     pricing:
+ *                       type: object
+ *                       properties:
+ *                         base_fee:
+ *                           type: string
+ *                           example: "10,000 đ"
+ *                         price_per_kwh:
+ *                           type: string
+ *                           example: "3,000 đ/kWh"
+ *                     estimated_time:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         energy_needed:
+ *                           type: string
+ *                           example: "40.00 kWh"
+ *                         estimated_time:
+ *                           type: string
+ *                           example: "0.30 giờ"
+ *                         estimated_completion:
+ *                           type: string
+ *                           format: date-time
+ *                 booking_info:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: active
+ *                     start_time:
+ *                       type: string
+ *                       format: date-time
+ *                     estimated_end_time:
+ *                       type: string
+ *                       format: date-time
+ *                 instructions:
+ *                   type: object
+ *                   properties:
+ *                     auto_stop:
+ *                       type: string
+ *                     manual_stop:
+ *                       type: string
+ *                     update_battery:
+ *                       type: string
+ *                     target_warning:
+ *                       type: string
+ *                       nullable: true
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc charging point không available
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: Charging point is not available
+ *                     current_status:
+ *                       type: string
+ *                       example: in_use
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: initial_battery_percentage is required (0-100)
+ *       403:
+ *         description: Vehicle không thuộc về user
+ *       404:
+ *         description: User, Vehicle, Charging Point, hoặc Station không tìm thấy
+ */
+router.post('/start-direct', chargingSessionController.startDirectCharging);
+
+/**
+ * @swagger
  * /api/charging-sessions/{session_id}/end:
  *   post:
  *     summary: Kết thúc session sạc

@@ -3,6 +3,9 @@ const Booking = require('../models/Booking');
 const ChargingPoint = require('../models/ChargingPoint');
 const crypto = require('crypto');
 const Invoice = require('../models/Invoice');
+const Station = require('../models/Station');
+const Vehicle = require('../models/Vehicle');
+const Account = require('../models/Account');
 
 // ============== 1. GENERATE QR CODE =================
 exports.generateQRCode = async (req, res) => {
@@ -272,6 +275,52 @@ exports.endSession = async (req, res) => {
     if (seconds > 0 || totalSeconds === 0) durationFormatted += `${seconds} giây`;
     durationFormatted = durationFormatted.trim();
     
+    // ============== CHECK SUBSCRIPTION & APPLY DISCOUNT =================
+    const VehicleSubscription = require('../models/VehicleSubscription');
+    const SubscriptionPlan = require('../models/SubscriptionPlan');
+    
+    let discount_percentage = 0;
+    let discount_amount = 0;
+    let subscription_id = null;
+    let subscription_plan_name = null;
+    const original_amount = calculation.total_amount;
+    
+    // Check if vehicle has active subscription
+    if (vehicle.vehicle_subscription_id) {
+      try {
+        const vehicleSubscription = await VehicleSubscription.findById(vehicle.vehicle_subscription_id)
+          .populate('subscription_id');
+        
+        if (vehicleSubscription && 
+            vehicleSubscription.status === 'active' && 
+            vehicleSubscription.subscription_id) {
+          
+          // Check if subscription is still valid (within date range)
+          const now = new Date();
+          if (now >= vehicleSubscription.start_date && now <= vehicleSubscription.end_date) {
+            const subscriptionPlan = vehicleSubscription.subscription_id;
+            const discountString = subscriptionPlan.discount || '0%';
+            
+            // Parse discount percentage (e.g., "15%" -> 15)
+            discount_percentage = parseFloat(discountString.replace('%', '').trim()) || 0;
+            
+            if (discount_percentage > 0 && discount_percentage <= 100) {
+              // Apply discount to total_amount
+              discount_amount = Math.round((original_amount * discount_percentage) / 100);
+              subscription_id = vehicleSubscription._id;
+              subscription_plan_name = subscriptionPlan.name;
+            }
+          }
+        }
+      } catch (error) {
+        // If subscription check fails, continue without discount
+        console.error('Error checking subscription:', error.message);
+      }
+    }
+    
+    // Calculate final amount after discount
+    const final_amount_after_discount = original_amount - discount_amount;
+    
     const invoice = await Invoice.create({
       // References
       session_id: session._id,
@@ -309,7 +358,13 @@ exports.endSession = async (req, res) => {
       base_fee: calculation.base_fee,
       price_per_kwh: calculation.price_per_kwh,
       charging_fee: calculation.charging_fee,
-      total_amount: calculation.total_amount,
+      original_amount: original_amount, // ✅ Tổng tiền trước discount
+      total_amount: final_amount_after_discount, // ✅ Tổng tiền sau discount
+      
+      // Subscription Discount (NEW)
+      subscription_id: subscription_id,
+      discount_percentage: discount_percentage > 0 ? discount_percentage : null,
+      discount_amount: discount_amount > 0 ? discount_amount : null,
       
       // Additional Info
       station_name: station.name,
@@ -367,13 +422,26 @@ exports.endSession = async (req, res) => {
         price_per_kwh: calculation.price_per_kwh,
         energy_charged: calculation.actual_energy_delivered_kwh + ' kWh',
         charging_fee: calculation.charging_fee,
-        total_amount: calculation.total_amount,
+        original_amount: original_amount,
+        total_amount: final_amount_after_discount,
         
         base_fee_formatted: calculation.base_fee.toLocaleString('vi-VN') + ' đ',
         charging_fee_formatted: calculation.charging_fee.toLocaleString('vi-VN') + ' đ',
-        total_amount_formatted: calculation.total_amount.toLocaleString('vi-VN') + ' đ',
+        original_amount_formatted: original_amount.toLocaleString('vi-VN') + ' đ',
+        total_amount_formatted: final_amount_after_discount.toLocaleString('vi-VN') + ' đ',
         
-        breakdown: `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${calculation.total_amount.toLocaleString('vi-VN')} đ`,
+        // Subscription discount info (if applicable)
+        ...(discount_amount > 0 && {
+          subscription_discount: {
+            plan_name: subscription_plan_name,
+            discount_percentage: discount_percentage + '%',
+            discount_amount: discount_amount.toLocaleString('vi-VN') + ' đ',
+          }
+        }),
+        
+        breakdown: discount_amount > 0
+          ? `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_amount.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${final_amount_after_discount.toLocaleString('vi-VN')} đ`
+          : `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${final_amount_after_discount.toLocaleString('vi-VN')} đ`,
       },
       
       invoice: {
@@ -388,7 +456,7 @@ exports.endSession = async (req, res) => {
         session_id: session._id,
         user_id: booking.user_id,
         vehicle_id: vehicle._id,
-        amount: calculation.total_amount,
+        amount: final_amount_after_discount, // ✅ Amount sau discount
         invoice_id: invoice._id,
       },
     });
@@ -581,6 +649,227 @@ exports.updateBatteryLevel = async (req, res) => {
       },
       warning, // null nếu chưa đạt target
       can_continue: current_battery_percentage < 100,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ============== NEW: START DIRECT CHARGING (WITHOUT BOOKING) =================
+/**
+ * Start charging session directly without pre-booking
+ * Automatically creates a booking and starts the session immediately
+ * 
+ * @route POST /api/charging-sessions/start-direct
+ * @body {string} user_id - User ID
+ * @body {string} vehicle_id - Vehicle ID
+ * @body {string} chargingPoint_id - Charging Point ID
+ * @body {number} initial_battery_percentage - Initial battery percentage (0-100)
+ * @body {number} target_battery_percentage - Target battery percentage (optional, default: 100)
+ */
+exports.startDirectCharging = async (req, res) => {
+  try {
+    const {
+      user_id,
+      vehicle_id,
+      chargingPoint_id,
+      initial_battery_percentage,
+      target_battery_percentage,
+    } = req.body;
+
+    // Validate required fields
+    if (!user_id || !vehicle_id || !chargingPoint_id) {
+      return res.status(400).json({
+        message: 'user_id, vehicle_id, and chargingPoint_id are required',
+      });
+    }
+
+    if (
+      initial_battery_percentage === undefined ||
+      initial_battery_percentage < 0 ||
+      initial_battery_percentage > 100
+    ) {
+      return res.status(400).json({
+        message: 'initial_battery_percentage is required (0-100)',
+      });
+    }
+
+    // Validate target (optional, default = 100)
+    const target = target_battery_percentage || 100;
+    if (target <= initial_battery_percentage || target > 100) {
+      return res.status(400).json({
+        message: 'target_battery_percentage must be > initial and <= 100',
+      });
+    }
+
+    // Validate user exists
+    const user = await Account.findById(user_id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Validate vehicle exists and belongs to user
+    const vehicle = await Vehicle.findById(vehicle_id);
+    if (!vehicle) {
+      return res.status(404).json({ message: 'Vehicle not found' });
+    }
+    if (vehicle.user_id.toString() !== user_id) {
+      return res.status(403).json({
+        message: 'Vehicle does not belong to this user',
+      });
+    }
+
+    // Validate charging point exists
+    const chargingPoint = await ChargingPoint.findById(chargingPoint_id).populate('stationId');
+    if (!chargingPoint) {
+      return res.status(404).json({ message: 'Charging point not found' });
+    }
+
+    // Check charging point status
+    if (chargingPoint.status !== 'available') {
+      return res.status(400).json({
+        message: 'Charging point is not available',
+        current_status: chargingPoint.status,
+      });
+    }
+
+    // Check if charging point type allows direct usage (offline) or online
+    // Both types can be used for direct charging, but offline is preferred
+    if (chargingPoint.type !== 'offline' && chargingPoint.type !== 'online') {
+      return res.status(400).json({
+        message: 'Invalid charging point type',
+        current_type: chargingPoint.type,
+      });
+    }
+
+    // Get station info for pricing
+    const station = chargingPoint.stationId;
+    if (!station) {
+      return res.status(404).json({ message: 'Station not found' });
+    }
+
+    const price_per_kwh = station.price_per_kwh || 3000;
+    const base_fee = station.base_fee || 10000;
+    const power_capacity_kw = station.power_capacity;
+
+    // Calculate estimated end time (based on battery capacity and power)
+    const now = new Date();
+    let estimatedEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // Default: 2 hours
+    
+    if (vehicle.batteryCapacity) {
+      const battery_to_charge_percent = target - initial_battery_percentage;
+      const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
+      const charging_efficiency = 0.90;
+      const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
+      estimatedEndTime = new Date(now.getTime() + estimated_hours * 3600000);
+      
+      // Add 30 minutes buffer
+      estimatedEndTime = new Date(estimatedEndTime.getTime() + 30 * 60 * 1000);
+    }
+
+    // Create booking automatically with status 'active'
+    const booking = await Booking.create({
+      user_id: user_id,
+      station_id: station._id,
+      vehicle_id: vehicle_id,
+      chargingPoint_id: chargingPoint_id,
+      start_time: now,
+      end_time: estimatedEndTime,
+      status: 'active', // Set to active immediately
+    });
+
+    // Generate QR token (optional, for consistency)
+    const qrToken = crypto.randomBytes(32).toString('hex');
+
+    // Create charging session
+    const session = await ChargingSession.create({
+      booking_id: booking._id,
+      chargingPoint_id: chargingPoint_id,
+      vehicle_id: vehicle_id,
+      qr_code_token: qrToken,
+      status: 'in_progress', // Start immediately
+      start_time: now,
+      initial_battery_percentage: initial_battery_percentage,
+      current_battery_percentage: initial_battery_percentage,
+      target_battery_percentage: target,
+      price_per_kwh: price_per_kwh,
+      base_fee: base_fee,
+    });
+
+    // Update charging point status to in_use
+    await ChargingPoint.findByIdAndUpdate(chargingPoint_id, {
+      status: 'in_use',
+    });
+
+    // Calculate estimated time info
+    let estimated_time_info = null;
+    if (vehicle.batteryCapacity) {
+      const battery_to_charge_percent = target - initial_battery_percentage;
+      const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
+      const charging_efficiency = 0.90;
+      const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
+      const estimated_completion = new Date(Date.now() + estimated_hours * 3600000);
+
+      estimated_time_info = {
+        energy_needed: energy_needed_kwh.toFixed(2) + ' kWh',
+        estimated_time: estimated_hours.toFixed(2) + ' giờ',
+        estimated_completion: estimated_completion.toISOString(),
+        formula: `${energy_needed_kwh.toFixed(2)} kWh ÷ (${power_capacity_kw} kW × 0.9) = ${estimated_hours.toFixed(2)} giờ`,
+      };
+    }
+
+    // Populate session for response
+    await session.populate([
+      { path: 'chargingPoint_id', select: 'name status type' },
+      { path: 'vehicle_id', select: 'plate_number model batteryCapacity' },
+      { path: 'booking_id', select: 'status start_time end_time' },
+    ]);
+
+    res.status(201).json({
+      message: 'Direct charging session started successfully',
+      session: {
+        id: session._id,
+        booking_id: booking._id,
+        start_time: session.start_time,
+        initial_battery: session.initial_battery_percentage + '%',
+        target_battery: target + '%',
+        battery_to_charge: (target - initial_battery_percentage) + '%',
+        status: session.status,
+        charging_point: {
+          id: session.chargingPoint_id._id,
+          name: session.chargingPoint_id.name || 'N/A',
+          type: session.chargingPoint_id.type,
+          power_capacity: power_capacity_kw + ' kW',
+        },
+        vehicle: {
+          id: session.vehicle_id._id,
+          plate_number: session.vehicle_id.plate_number,
+          model: session.vehicle_id.model,
+          battery_capacity: vehicle.batteryCapacity ? vehicle.batteryCapacity + ' kWh' : 'N/A',
+        },
+        station: {
+          id: station._id,
+          name: station.name,
+          address: station.address,
+        },
+        pricing: {
+          base_fee: session.base_fee.toLocaleString('vi-VN') + ' đ',
+          price_per_kwh: session.price_per_kwh.toLocaleString('vi-VN') + ' đ/kWh',
+        },
+        estimated_time: estimated_time_info,
+      },
+      booking_info: {
+        id: booking._id,
+        status: booking.status,
+        start_time: booking.start_time,
+        estimated_end_time: estimatedEndTime,
+      },
+      instructions: {
+        auto_stop: 'Session will auto-stop at 100%',
+        manual_stop: 'You can stop anytime using POST /api/charging-sessions/:session_id/end',
+        update_battery: 'Update battery level using PATCH /api/charging-sessions/:session_id/battery',
+        target_warning: target < 100 ? `Will notify when reaching ${target}%` : null,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
