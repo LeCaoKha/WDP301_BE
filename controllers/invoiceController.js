@@ -2,78 +2,211 @@ const Invoice = require('../models/Invoice');
 const ChargingSession = require('../models/ChargingSession');
 const { default: mongoose } = require('mongoose');
 
-// ============== HELPER FUNCTION: FORMAT INVOICE FULL DETAIL ==============
+// ============== HELPER FUNCTION: FORMAT INVOICE DETAIL RESPONSE ==============
 /**
- * Format invoice với đầy đủ thông tin như invoice detail
- * @param {Object} inv - Invoice object từ database
- * @returns {Object} Formatted invoice object
+ * Format invoice response giống hệt getInvoiceDetail
+ * @param {Object} invoice - Invoice object từ database (đã populate nếu cần)
+ * @returns {Object} Formatted invoice response object
  */
-const formatInvoiceFullDetail = (inv) => {
+const formatInvoiceDetailResponse = (invoice) => {
   return {
-    // Invoice Info
-    id: inv._id,
-    session_id: inv.session_id,
-    user_id: inv.user_id,
-    booking_id: inv.booking_id,
-    vehicle_id: inv.vehicle_id,
-    station_id: inv.station_id,
-    chargingPoint_id: inv.chargingPoint_id,
-    created_at: inv.createdAt,
-    updated_at: inv.updatedAt,
+    invoice_info: {
+      id: invoice._id,
+      created_at: invoice.createdAt,
+    },
+    station_info: {
+      name: invoice.station_name,
+      address: invoice.station_address,
+    },
+    vehicle_info: {
+      model: invoice.vehicle_model,
+      plate_number: invoice.vehicle_plate_number,
+      battery_capacity: `${invoice.battery_capacity_kwh} kWh`,
+      is_active: invoice.vehicle_id?.isActive || false,
+    },
+    charging_session: {
+      start_time: invoice.start_time,
+      end_time: invoice.end_time,
+      duration: invoice.charging_duration_formatted,
+      duration_seconds: invoice.charging_duration_seconds,
+      duration_minutes: invoice.charging_duration_minutes,
+      duration_hours: invoice.charging_duration_hours,
 
-    // Station Info
-    station_name: inv.station_name,
-    station_address: inv.station_address,
+      initial_battery: `${invoice.initial_battery_percentage}%`,
+      final_battery: `${invoice.final_battery_percentage}%`,
+      target_battery: `${invoice.target_battery_percentage}%`,
+      battery_charged: `${invoice.battery_charged_percentage}%`,
+      target_reached: invoice.target_reached,
 
-    // Vehicle Info
-    vehicle_plate_number: inv.vehicle_plate_number,
-    vehicle_model: inv.vehicle_model,
-    vehicle_is_active: inv.vehicle_id?.isActive || false,
+      energy_delivered: `${invoice.energy_delivered_kwh.toFixed(2)} kWh`,
+      power_capacity: `${invoice.power_capacity_kw} kW`,
+      calculation_method: invoice.calculation_method,
+    },
+    pricing: {
+      base_fee: invoice.base_fee,
+      base_fee_formatted: `${invoice.base_fee.toLocaleString('vi-VN')} đ`,
+      price_per_kwh: invoice.price_per_kwh,
+      price_per_kwh_formatted: `${invoice.price_per_kwh.toLocaleString(
+        'vi-VN'
+      )} đ/kWh`,
+      original_charging_fee:
+        invoice.original_charging_fee || invoice.charging_fee,
+      original_charging_fee_formatted: `${(
+        invoice.original_charging_fee || invoice.charging_fee
+      ).toLocaleString('vi-VN')} đ`,
+      charging_fee: invoice.charging_fee, // ✅ Đã được discount (nếu có)
+      charging_fee_formatted: `${invoice.charging_fee.toLocaleString(
+        'vi-VN'
+      )} đ`,
 
-    // Charging Session
-    start_time: inv.start_time,
-    end_time: inv.end_time,
-    charging_duration_seconds: inv.charging_duration_seconds,
-    charging_duration_minutes: inv.charging_duration_minutes,
-    charging_duration_hours: inv.charging_duration_hours,
-    charging_duration_formatted: inv.charging_duration_formatted,
+      // Overtime Penalty
+      overtime: {
+        has_overtime: (invoice.overtime_minutes || 0) > 0,
+        booking_end_time: invoice.booking_end_time || null,
+        overtime_minutes: invoice.overtime_minutes || 0,
+        overtime_fee_rate: invoice.overtime_fee_rate || 500,
+        overtime_fee: invoice.overtime_fee || 0,
+        overtime_fee_formatted: invoice.overtime_fee
+          ? `${invoice.overtime_fee.toLocaleString('vi-VN')} đ`
+          : '0 đ',
+        note:
+          invoice.overtime_minutes > 0
+            ? `Sạc quá ${invoice.overtime_minutes} phút so với thời gian booking`
+            : 'Không có phạt quá giờ',
+      },
 
-    initial_battery_percentage: inv.initial_battery_percentage,
-    final_battery_percentage: inv.final_battery_percentage,
-    target_battery_percentage: inv.target_battery_percentage,
-    battery_charged_percentage: inv.battery_charged_percentage,
-    target_reached: inv.target_reached,
+      total_amount: invoice.total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
+      total_amount_formatted: `${invoice.total_amount.toLocaleString(
+        'vi-VN'
+      )} đ`,
+      // Subscription discount (if applicable)
+      ...(invoice.discount_amount > 0 && {
+        subscription_discount: {
+          discount_percentage: `${invoice.discount_percentage}%`,
+          discount_amount: `${invoice.discount_amount.toLocaleString(
+            'vi-VN'
+          )} đ`,
+          subscription_id: invoice.subscription_id,
+          note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
+        },
+      }),
 
-    battery_capacity_kwh: inv.battery_capacity_kwh,
-    power_capacity_kw: inv.power_capacity_kw,
-    energy_delivered_kwh: inv.energy_delivered_kwh,
-    charging_efficiency: inv.charging_efficiency,
-    calculation_method: inv.calculation_method,
+      breakdown: (() => {
+        let breakdown = '';
 
-    // Pricing
-    base_fee: inv.base_fee,
-    price_per_kwh: inv.price_per_kwh,
-    original_charging_fee: inv.original_charging_fee || inv.charging_fee,
-    charging_fee: inv.charging_fee,
+        // Base fee (nếu có)
+        if (invoice.base_fee > 0) {
+          breakdown = `${invoice.base_fee.toLocaleString(
+            'vi-VN'
+          )} đ (phí cơ bản - đã thanh toán) + `;
+        }
 
-    // Overtime Penalty
-    booking_end_time: inv.booking_end_time || null,
-    overtime_minutes: inv.overtime_minutes || 0,
-    overtime_fee: inv.overtime_fee || 0,
-    overtime_fee_rate: inv.overtime_fee_rate || 500,
+        // Charging fee
+        if (invoice.discount_amount > 0) {
+          breakdown += `${invoice.energy_delivered_kwh.toFixed(
+            2
+          )} kWh × ${invoice.price_per_kwh.toLocaleString(
+            'vi-VN'
+          )} đ/kWh = ${(
+            invoice.original_charging_fee || invoice.charging_fee
+          ).toLocaleString(
+            'vi-VN'
+          )} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${
+            invoice.discount_percentage
+          }%) = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
+        } else {
+          breakdown += `${invoice.energy_delivered_kwh.toFixed(
+            2
+          )} kWh × ${invoice.price_per_kwh.toLocaleString(
+            'vi-VN'
+          )} đ/kWh = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
+        }
 
-    total_amount: inv.total_amount,
+        // Overtime fee (nếu có)
+        if (invoice.overtime_fee > 0) {
+          breakdown += ` + ${invoice.overtime_minutes} phút × ${(
+            invoice.overtime_fee_rate || 500
+          ).toLocaleString(
+            'vi-VN'
+          )} đ/phút (phạt quá giờ) = ${invoice.overtime_fee.toLocaleString(
+            'vi-VN'
+          )} đ`;
+        }
 
-    // Subscription Discount
-    subscription_id: inv.subscription_id || null,
-    discount_percentage: inv.discount_percentage || null,
-    discount_amount: inv.discount_amount || null,
+        breakdown += ` → Tổng: ${invoice.total_amount.toLocaleString(
+          'vi-VN'
+        )} đ`;
 
-    // Payment
-    payment_status: inv.payment_status,
-    payment_method: inv.payment_method,
-    payment_date: inv.payment_date || null,
-    transaction_id: inv.transaction_id || null,
+        return breakdown;
+      })(),
+    },
+    // ============== PAYMENT DATA ==============
+    // ✅ Thông tin số tiền cần thanh toán
+    payment_data: {
+      // ✅ Số tiền cần thanh toán
+      // Nếu unpaid: charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
+      // Nếu paid: 0 (đã thanh toán rồi)
+      final_amount:
+        invoice.payment_status === 'unpaid'
+          ? invoice.charging_fee + (invoice.overtime_fee || 0)
+          : 0,
+      final_amount_formatted:
+        invoice.payment_status === 'unpaid'
+          ? `${(
+              invoice.charging_fee + (invoice.overtime_fee || 0)
+            ).toLocaleString('vi-VN')} đ`
+          : '0 đ (đã thanh toán)',
+      // Chi tiết breakdown
+      breakdown:
+        invoice.payment_status === 'unpaid'
+          ? (() => {
+              let breakdown = '';
+              if (invoice.base_fee > 0) {
+                breakdown = `Phí cơ bản (${invoice.base_fee.toLocaleString(
+                  'vi-VN'
+                )} đ) đã thanh toán khi confirm booking. `;
+              }
+              breakdown += `Cần thanh toán: Phí sạc (${invoice.charging_fee.toLocaleString(
+                'vi-VN'
+              )} đ)`;
+              if (invoice.overtime_fee > 0) {
+                breakdown += ` + Phạt quá giờ (${invoice.overtime_fee.toLocaleString(
+                  'vi-VN'
+                )} đ)`;
+              }
+              breakdown += ` = ${(
+                invoice.charging_fee + (invoice.overtime_fee || 0)
+              ).toLocaleString('vi-VN')} đ`;
+              return breakdown;
+            })()
+          : 'Đã thanh toán',
+
+      note:
+        invoice.payment_status === 'unpaid'
+          ? invoice.base_fee > 0
+            ? invoice.overtime_fee > 0
+              ? `Base fee đã được thanh toán khi confirm booking. Cần thanh toán: Charging fee + Phạt quá giờ (${
+                  invoice.overtime_minutes
+                } phút × ${(invoice.overtime_fee_rate || 500).toLocaleString(
+                  'vi-VN'
+                )} đ/phút = ${invoice.overtime_fee.toLocaleString(
+                  'vi-VN'
+                )} đ).`
+              : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.'
+            : invoice.overtime_fee > 0
+            ? `Direct charging: Chỉ thanh toán phí sạc + Phạt quá giờ (${
+                invoice.overtime_minutes
+              } phút × ${(invoice.overtime_fee_rate || 500).toLocaleString(
+                'vi-VN'
+              )} đ/phút = ${invoice.overtime_fee.toLocaleString('vi-VN')} đ).`
+            : 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
+          : 'Invoice đã được thanh toán',
+
+      payment_status: invoice.payment_status,
+      payment_method: invoice.payment_method || 'vnpay',
+      payment_date: invoice.payment_date || null,
+      transaction_id: invoice.transaction_id || null,
+    },
   };
 };
 
@@ -120,7 +253,7 @@ exports.getAllInvoices = async (req, res) => {
 
     // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
     const formattedInvoices = invoices.map((inv) =>
-      formatInvoiceFullDetail(inv)
+      formatInvoiceDetailResponse(inv)
     );
 
     res.status(200).json({
@@ -195,7 +328,7 @@ exports.getUserInvoices = async (req, res) => {
 
     // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
     const formattedInvoices = invoices.map((inv) =>
-      formatInvoiceFullDetail(inv)
+      formatInvoiceDetailResponse(inv)
     );
 
     res.status(200).json({
@@ -242,194 +375,7 @@ exports.getInvoiceDetail = async (req, res) => {
     }
 
     // ✅ FORMAT RESPONSE ĐẦY ĐỦ
-    res.status(200).json({
-      invoice_info: {
-        id: invoice._id,
-        created_at: invoice.createdAt,
-      },
-      station_info: {
-        name: invoice.station_name,
-        address: invoice.station_address,
-      },
-      vehicle_info: {
-        model: invoice.vehicle_model,
-        plate_number: invoice.vehicle_plate_number,
-        battery_capacity: `${invoice.battery_capacity_kwh} kWh`,
-        is_active: invoice.vehicle_id?.isActive || false,
-      },
-      charging_session: {
-        start_time: invoice.start_time,
-        end_time: invoice.end_time,
-        duration: invoice.charging_duration_formatted,
-        duration_seconds: invoice.charging_duration_seconds,
-        duration_minutes: invoice.charging_duration_minutes,
-        duration_hours: invoice.charging_duration_hours,
-
-        initial_battery: `${invoice.initial_battery_percentage}%`,
-        final_battery: `${invoice.final_battery_percentage}%`,
-        target_battery: `${invoice.target_battery_percentage}%`,
-        battery_charged: `${invoice.battery_charged_percentage}%`,
-        target_reached: invoice.target_reached,
-
-        energy_delivered: `${invoice.energy_delivered_kwh.toFixed(2)} kWh`,
-        power_capacity: `${invoice.power_capacity_kw} kW`,
-        calculation_method: invoice.calculation_method,
-      },
-      pricing: {
-        base_fee: invoice.base_fee,
-        base_fee_formatted: `${invoice.base_fee.toLocaleString('vi-VN')} đ`,
-        price_per_kwh: invoice.price_per_kwh,
-        price_per_kwh_formatted: `${invoice.price_per_kwh.toLocaleString(
-          'vi-VN'
-        )} đ/kWh`,
-        original_charging_fee:
-          invoice.original_charging_fee || invoice.charging_fee,
-        original_charging_fee_formatted: `${(
-          invoice.original_charging_fee || invoice.charging_fee
-        ).toLocaleString('vi-VN')} đ`,
-        charging_fee: invoice.charging_fee, // ✅ Đã được discount (nếu có)
-        charging_fee_formatted: `${invoice.charging_fee.toLocaleString(
-          'vi-VN'
-        )} đ`,
-
-        // Overtime Penalty
-        overtime: {
-          has_overtime: (invoice.overtime_minutes || 0) > 0,
-          booking_end_time: invoice.booking_end_time || null,
-          overtime_minutes: invoice.overtime_minutes || 0,
-          overtime_fee_rate: invoice.overtime_fee_rate || 500,
-          overtime_fee: invoice.overtime_fee || 0,
-          overtime_fee_formatted: invoice.overtime_fee
-            ? `${invoice.overtime_fee.toLocaleString('vi-VN')} đ`
-            : '0 đ',
-          note:
-            invoice.overtime_minutes > 0
-              ? `Sạc quá ${invoice.overtime_minutes} phút so với thời gian booking`
-              : 'Không có phạt quá giờ',
-        },
-
-        total_amount: invoice.total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
-        // Subscription discount (if applicable)
-        ...(invoice.discount_amount > 0 && {
-          subscription_discount: {
-            discount_percentage: `${invoice.discount_percentage}%`,
-            discount_amount: `${invoice.discount_amount.toLocaleString(
-              'vi-VN'
-            )} đ`,
-            subscription_id: invoice.subscription_id,
-            note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
-          },
-        }),
-
-        breakdown: (() => {
-          let breakdown = '';
-
-          // Base fee (nếu có)
-          if (invoice.base_fee > 0) {
-            breakdown = `${invoice.base_fee.toLocaleString(
-              'vi-VN'
-            )} đ (phí cơ bản - đã thanh toán) + `;
-          }
-
-          // Charging fee
-          if (invoice.discount_amount > 0) {
-            breakdown += `${invoice.energy_delivered_kwh.toFixed(
-              2
-            )} kWh × ${invoice.price_per_kwh.toLocaleString(
-              'vi-VN'
-            )} đ/kWh = ${(
-              invoice.original_charging_fee || invoice.charging_fee
-            ).toLocaleString(
-              'vi-VN'
-            )} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${
-              invoice.discount_percentage
-            }%) = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
-          } else {
-            breakdown += `${invoice.energy_delivered_kwh.toFixed(
-              2
-            )} kWh × ${invoice.price_per_kwh.toLocaleString(
-              'vi-VN'
-            )} đ/kWh = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
-          }
-
-          // Overtime fee (nếu có)
-          if (invoice.overtime_fee > 0) {
-            breakdown += ` + ${invoice.overtime_minutes} phút × ${(
-              invoice.overtime_fee_rate || 500
-            ).toLocaleString(
-              'vi-VN'
-            )} đ/phút (phạt quá giờ) = ${invoice.overtime_fee.toLocaleString(
-              'vi-VN'
-            )} đ`;
-          }
-
-          breakdown += ` → Tổng: ${invoice.total_amount.toLocaleString(
-            'vi-VN'
-          )} đ`;
-
-          return breakdown;
-        })(),
-      },
-      // ============== PAYMENT DATA ==============
-      // ✅ Thông tin số tiền cần thanh toán
-      payment_data: {
-        // ✅ Số tiền cần thanh toán
-        // Nếu unpaid: charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
-        // Nếu paid: 0 (đã thanh toán rồi)
-        final_amount:
-          invoice.payment_status === 'unpaid'
-            ? invoice.charging_fee + (invoice.overtime_fee || 0)
-            : 0,
-        // Chi tiết breakdown
-        breakdown:
-          invoice.payment_status === 'unpaid'
-            ? (() => {
-                let breakdown = '';
-                if (invoice.base_fee > 0) {
-                  breakdown = `Phí cơ bản (${invoice.base_fee.toLocaleString(
-                    'vi-VN'
-                  )} đ) đã thanh toán khi confirm booking. `;
-                }
-                breakdown += `Cần thanh toán: Phí sạc (${invoice.charging_fee.toLocaleString(
-                  'vi-VN'
-                )} đ)`;
-                if (invoice.overtime_fee > 0) {
-                  breakdown += ` + Phạt quá giờ (${invoice.overtime_fee.toLocaleString(
-                    'vi-VN'
-                  )} đ)`;
-                }
-                breakdown += ` = ${(
-                  invoice.charging_fee + (invoice.overtime_fee || 0)
-                ).toLocaleString('vi-VN')} đ`;
-                return breakdown;
-              })()
-            : 'Đã thanh toán',
-
-        note:
-          invoice.payment_status === 'unpaid'
-            ? invoice.base_fee > 0
-              ? invoice.overtime_fee > 0
-                ? `Base fee đã được thanh toán khi confirm booking. Cần thanh toán: Charging fee + Phạt quá giờ (${
-                    invoice.overtime_minutes
-                  } phút × ${(invoice.overtime_fee_rate || 500).toLocaleString(
-                    'vi-VN'
-                  )} đ/phút = ${invoice.overtime_fee.toLocaleString(
-                    'vi-VN'
-                  )} đ).`
-                : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.'
-              : invoice.overtime_fee > 0
-              ? `Direct charging: Chỉ thanh toán phí sạc + Phạt quá giờ (${
-                  invoice.overtime_minutes
-                } phút × ${(invoice.overtime_fee_rate || 500).toLocaleString(
-                  'vi-VN'
-                )} đ/phút = ${invoice.overtime_fee.toLocaleString('vi-VN')} đ).`
-              : 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
-            : 'Invoice đã được thanh toán',
-
-        payment_status: invoice.payment_status,
-        payment_method: invoice.payment_method || 'vnpay',
-      },
-    });
+    res.status(200).json(formatInvoiceDetailResponse(invoice));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -512,7 +458,7 @@ exports.getUnpaidInvoices = async (req, res) => {
 
     // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
     const formattedInvoices = invoices.map((inv) =>
-      formatInvoiceFullDetail(inv)
+      formatInvoiceDetailResponse(inv)
     );
 
     res.status(200).json({
@@ -641,7 +587,7 @@ exports.getCompanyDriversInvoices = async (req, res) => {
       );
 
       // Format invoice đầy đủ
-      const invoiceDetail = formatInvoiceFullDetail(inv);
+      const invoiceDetail = formatInvoiceDetailResponse(inv);
 
       // Thêm thông tin driver
       return {
