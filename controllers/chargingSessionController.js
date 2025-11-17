@@ -131,23 +131,37 @@ exports.startSessionByQr = async (req, res) => {
         message: 'target_battery_percentage must be > initial and <= 100',
       });
     }
+
+    // ✅ Check charging point status
+    const chargingPoint = session.chargingPoint_id;
+    if (chargingPoint.status !== 'available' && chargingPoint.status !== 'in_use') {
+      return res.status(400).json({
+        message: 'Charging point is not available',
+        current_status: chargingPoint.status,
+      });
+    }
     
     // Start session
     session.start_time = new Date();
     session.status = 'in_progress';
     session.initial_battery_percentage = initial_battery_percentage;
-    session.target_battery_percentage = target; // ✅ LƯU TARGET
-    session.current_battery_percentage = initial_battery_percentage; // ✅ INIT CURRENT
+    session.target_battery_percentage = target;
+    session.current_battery_percentage = initial_battery_percentage;
     await session.save();
     
-    // Update booking
+    // Update booking status to active
     await Booking.findByIdAndUpdate(session.booking_id._id, {
       status: 'active',
+    });
+
+    // ✅ Update charging point status to in_use and link session
+    await ChargingPoint.findByIdAndUpdate(chargingPoint._id, {
+      status: 'in_use',
+      current_session_id: session._id,
     });
     
     // ✅ TÍNH THỜI GIAN ƯỚC TÍNH dựa trên công thức mới
     const vehicle = session.vehicle_id;
-    const chargingPoint = session.chargingPoint_id;
     
     // Lấy power_capacity từ Station
     await chargingPoint.populate('stationId');
@@ -278,6 +292,23 @@ exports.endSession = async (req, res) => {
     // ============== CHECK IF DIRECT CHARGING (NO BASE FEE) =================
     const is_direct_charging = session.is_direct_charging || false;
     
+    // ============== CALCULATE OVERTIME PENALTY =================
+    // ✅ ÁP DỤNG CHO CẢ BOOKING VÀ DIRECT CHARGING
+    // So sánh session.end_time với booking.end_time
+    let overtime_minutes = 0;
+    let overtime_fee = 0;
+    const overtime_fee_rate = 500; // 500 đồng/phút
+
+    if (booking && booking.end_time) {
+      if (session.end_time > booking.end_time) {
+        const overtimeMs = session.end_time - booking.end_time;
+        overtime_minutes = Math.ceil(overtimeMs / (1000 * 60)); // Làm tròn lên
+        overtime_fee = overtime_minutes * overtime_fee_rate;
+        console.log(`⚠️ Overtime detected: ${overtime_minutes} phút, penalty: ${overtime_fee.toLocaleString('vi-VN')} đ`);
+        console.log(`   Booking end: ${booking.end_time.toISOString()}, Session end: ${session.end_time.toISOString()}`);
+      }
+    }
+    
     // ============== CHECK SUBSCRIPTION & APPLY DISCOUNT =================
     // ✅ DISCOUNT CHỈ ÁP DỤNG CHO CHARGING_FEE, KHÔNG ÁP DỤNG CHO BASE_FEE
     // Base fee đã được thanh toán khi confirm booking (hoặc = 0 nếu direct charging)
@@ -327,7 +358,7 @@ exports.endSession = async (req, res) => {
     
     // Calculate discounted charging fee and final total amount
     const discounted_charging_fee = original_charging_fee - discount_amount;
-    const final_total_amount = base_fee + discounted_charging_fee; // ✅ Base fee không bị discount
+    const final_total_amount = base_fee + discounted_charging_fee + overtime_fee; // ✅ Thêm overtime_fee
     
     const invoice = await Invoice.create({
       // References
@@ -367,7 +398,13 @@ exports.endSession = async (req, res) => {
       price_per_kwh: calculation.price_per_kwh,
       charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount (để lưu vào invoice)
       original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount (để lưu vào invoice)
-      total_amount: final_total_amount, // ✅ Base fee + discounted charging fee
+      total_amount: final_total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
+      
+      // Overtime Penalty
+      booking_end_time: booking.end_time,
+      overtime_minutes: overtime_minutes,
+      overtime_fee: overtime_fee,
+      overtime_fee_rate: overtime_fee_rate,
       
       // Subscription Discount (NEW)
       subscription_id: subscription_id,
@@ -431,7 +468,7 @@ exports.endSession = async (req, res) => {
         energy_charged: calculation.actual_energy_delivered_kwh + ' kWh',
         original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount
         charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount
-        total_amount: final_total_amount, // ✅ Base fee + discounted charging fee
+        total_amount: final_total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
         
         base_fee_formatted: is_direct_charging 
           ? '0 đ (không có phí cơ bản - direct charging)'
@@ -450,13 +487,44 @@ exports.endSession = async (req, res) => {
           }
         }),
         
-        breakdown: is_direct_charging
-          ? discount_amount > 0
-            ? `${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_charging_fee.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ (không có phí cơ bản)`
-            : `${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ (không có phí cơ bản)`
-          : discount_amount > 0
-            ? `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_charging_fee.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ`
-            : `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${discounted_charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ`,
+        // ✅ OVERTIME PENALTY
+        overtime: {
+          has_overtime: overtime_minutes > 0,
+          overtime_minutes: overtime_minutes,
+          overtime_fee_rate: overtime_fee_rate + ' đ/phút',
+          overtime_fee: overtime_fee,
+          overtime_fee_formatted: overtime_fee.toLocaleString('vi-VN') + ' đ',
+          booking_end_time: booking.end_time ? booking.end_time.toISOString() : null,
+          session_end_time: session.end_time.toISOString(),
+          note: overtime_minutes > 0 
+            ? `Sạc quá ${overtime_minutes} phút so với thời gian booking`
+            : 'Không có phạt quá giờ',
+        },
+        
+        breakdown: (() => {
+          let breakdown = '';
+          
+          // Base fee (chỉ cho booking, không có cho direct charging)
+          if (!is_direct_charging && calculation.base_fee > 0) {
+            breakdown = discount_amount > 0
+              ? `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_charging_fee.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${discounted_charging_fee.toLocaleString('vi-VN')} đ`
+              : `${calculation.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${discounted_charging_fee.toLocaleString('vi-VN')} đ`;
+          } else {
+            // Direct charging
+            breakdown = discount_amount > 0
+              ? `${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${original_charging_fee.toLocaleString('vi-VN')} đ - ${discount_amount.toLocaleString('vi-VN')} đ (giảm ${discount_percentage}% từ gói ${subscription_plan_name}) = ${discounted_charging_fee.toLocaleString('vi-VN')} đ`
+              : `${calculation.actual_energy_delivered_kwh} kWh × ${calculation.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${discounted_charging_fee.toLocaleString('vi-VN')} đ`;
+          }
+          
+          // ✅ Thêm overtime fee vào breakdown
+          if (overtime_minutes > 0) {
+            breakdown += ` + ${overtime_minutes} phút × ${overtime_fee_rate.toLocaleString('vi-VN')} đ/phút (phạt quá giờ) = ${overtime_fee.toLocaleString('vi-VN')} đ`;
+          }
+          
+          breakdown += ` → Tổng: ${final_total_amount.toLocaleString('vi-VN')} đ`;
+          
+          return breakdown;
+        })(),
       },
       
       invoice: {
@@ -471,11 +539,15 @@ exports.endSession = async (req, res) => {
         session_id: session._id,
         user_id: booking.user_id,
         vehicle_id: vehicle._id,
-        amount: discounted_charging_fee, // ✅ Chỉ thanh toán charging fee
+        amount: discounted_charging_fee + overtime_fee, // ✅ Bao gồm cả overtime_fee
         invoice_id: invoice._id,
         note: is_direct_charging 
-          ? 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
-          : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.',
+          ? overtime_minutes > 0
+            ? `Direct charging: Chỉ thanh toán phí sạc + Phạt quá giờ (${overtime_minutes} phút × 500 đ/phút = ${overtime_fee.toLocaleString('vi-VN')} đ).`
+            : 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
+          : overtime_minutes > 0
+            ? `Base fee đã được thanh toán khi confirm booking. Cần thanh toán: Charging fee + Phạt quá giờ (${overtime_minutes} phút × 500 đ/phút = ${overtime_fee.toLocaleString('vi-VN')} đ).`
+            : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.',
       },
     });
   } catch (error) {
@@ -620,6 +692,147 @@ exports.updateBatteryLevel = async (req, res) => {
       const calculation = await session.calculateCharges();
       await session.save();
       
+      // Populate booking với station_id để tính toán
+      const booking = await Booking.findById(session.booking_id).populate('station_id');
+      const vehicle = session.vehicle_id;
+      const station = booking.station_id;
+      const chargingPoint = session.chargingPoint_id;
+      
+      const target = session.target_battery_percentage || 100;
+      const final_battery = calculation.final_battery_percentage;
+      const target_reached = final_battery >= target;
+      
+      // ✅ TÍNH THỜI GIAN CHÍNH XÁC (GIÂY)
+      const durationMs = session.end_time - session.start_time;
+      const totalSeconds = Math.floor(durationMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      
+      // ✅ FORMAT DURATION
+      let durationFormatted = '';
+      if (hours > 0) durationFormatted += `${hours} giờ `;
+      if (minutes > 0) durationFormatted += `${minutes} phút `;
+      if (seconds > 0 || totalSeconds === 0) durationFormatted += `${seconds} giây`;
+      durationFormatted = durationFormatted.trim();
+      
+      // ============== CHECK IF DIRECT CHARGING (NO BASE FEE) =================
+      const is_direct_charging = session.is_direct_charging || false;
+      
+      // ============== CALCULATE OVERTIME PENALTY =================
+      // ✅ ÁP DỤNG CHO CẢ BOOKING VÀ DIRECT CHARGING
+      let overtime_minutes = 0;
+      let overtime_fee = 0;
+      const overtime_fee_rate = 500; // 500 đồng/phút
+
+      if (booking && booking.end_time) {
+        if (session.end_time > booking.end_time) {
+          const overtimeMs = session.end_time - booking.end_time;
+          overtime_minutes = Math.ceil(overtimeMs / (1000 * 60)); // Làm tròn lên
+          overtime_fee = overtime_minutes * overtime_fee_rate;
+          console.log(`⚠️ [Auto-stop] Overtime detected: ${overtime_minutes} phút, penalty: ${overtime_fee.toLocaleString('vi-VN')} đ`);
+        }
+      }
+      
+      // ============== CHECK SUBSCRIPTION & APPLY DISCOUNT =================
+      const VehicleSubscription = require('../models/VehicleSubscription');
+      const SubscriptionPlan = require('../models/SubscriptionPlan');
+      const Invoice = require('../models/Invoice');
+      
+      let discount_percentage = 0;
+      let discount_amount = 0;
+      let subscription_id = null;
+      let subscription_plan_name = null;
+      const original_charging_fee = calculation.charging_fee;
+      const base_fee = is_direct_charging ? 0 : calculation.base_fee;
+      
+      // Check if vehicle has active subscription
+      if (vehicle.vehicle_subscription_id) {
+        try {
+          const vehicleSubscription = await VehicleSubscription.findById(vehicle.vehicle_subscription_id)
+            .populate('subscription_id');
+          
+          if (vehicleSubscription && 
+              vehicleSubscription.status === 'active' && 
+              vehicleSubscription.subscription_id) {
+            
+            const now = new Date();
+            if (now >= vehicleSubscription.start_date && now <= vehicleSubscription.end_date) {
+              const subscriptionPlan = vehicleSubscription.subscription_id;
+              const discountString = subscriptionPlan.discount || '0%';
+              
+              discount_percentage = parseFloat(discountString.replace('%', '').trim()) || 0;
+              
+              if (discount_percentage > 0 && discount_percentage <= 100) {
+                discount_amount = Math.round((original_charging_fee * discount_percentage) / 100);
+                subscription_id = vehicleSubscription._id;
+                subscription_plan_name = subscriptionPlan.name;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking subscription:', error.message);
+        }
+      }
+      
+      // Calculate discounted charging fee and final total amount
+      const discounted_charging_fee = original_charging_fee - discount_amount;
+      const final_total_amount = base_fee + discounted_charging_fee + overtime_fee;
+      
+      // Create invoice
+      const invoice = await Invoice.create({
+        session_id: session._id,
+        user_id: booking.user_id,
+        booking_id: booking._id,
+        vehicle_id: vehicle._id,
+        station_id: station._id,
+        chargingPoint_id: chargingPoint._id,
+        
+        start_time: session.start_time,
+        end_time: session.end_time,
+        charging_duration_seconds: totalSeconds,
+        charging_duration_minutes: calculation.charging_duration_minutes,
+        charging_duration_hours: parseFloat(calculation.charging_duration_hours),
+        charging_duration_formatted: durationFormatted,
+        
+        initial_battery_percentage: calculation.initial_battery_percentage,
+        final_battery_percentage: calculation.final_battery_percentage,
+        target_battery_percentage: target,
+        battery_charged_percentage: calculation.battery_charged_percentage,
+        target_reached: target_reached,
+        
+        battery_capacity_kwh: calculation.battery_capacity_kwh,
+        power_capacity_kw: calculation.power_capacity_kw,
+        energy_delivered_kwh: parseFloat(calculation.actual_energy_delivered_kwh),
+        charging_efficiency: calculation.charging_efficiency,
+        calculation_method: calculation.calculation_method === 'Based on actual battery percentage' 
+          ? 'battery_based' 
+          : 'time_based',
+        
+        base_fee: calculation.base_fee,
+        price_per_kwh: calculation.price_per_kwh,
+        charging_fee: discounted_charging_fee,
+        original_charging_fee: original_charging_fee,
+        total_amount: final_total_amount,
+        
+        booking_end_time: booking.end_time,
+        overtime_minutes: overtime_minutes,
+        overtime_fee: overtime_fee,
+        overtime_fee_rate: overtime_fee_rate,
+        
+        subscription_id: subscription_id,
+        discount_percentage: discount_percentage > 0 ? discount_percentage : null,
+        discount_amount: discount_amount > 0 ? discount_amount : null,
+        
+        station_name: station.name,
+        station_address: station.address,
+        vehicle_plate_number: vehicle.plate_number,
+        vehicle_model: vehicle.model,
+        
+        payment_status: 'unpaid',
+        payment_method: 'vnpay',
+      });
+      
       // Update charging point & booking
       await ChargingPoint.findByIdAndUpdate(session.chargingPoint_id._id, {
         status: 'available',
@@ -632,13 +845,96 @@ exports.updateBatteryLevel = async (req, res) => {
       return res.status(200).json({
         message: '🔋 Session auto-stopped: Battery FULL (100%)',
         auto_stopped: true,
+        target_status: `✅ Đạt mục tiêu 100%`,
+        
         session: {
           id: session._id,
-          battery_charged: `${session.initial_battery_percentage}% → 100%`,
-          duration: calculation.charging_duration_formatted,
-          total_amount: Math.round(calculation.total_amount).toLocaleString('vi-VN') + ' đ',
+          start_time: session.start_time,
+          end_time: session.end_time,
+          duration: durationFormatted,
+          duration_seconds: totalSeconds,
+          duration_hours: calculation.charging_duration_hours + ' giờ',
+          
+          initial_battery: calculation.initial_battery_percentage + '%',
+          final_battery: calculation.final_battery_percentage + '%',
+          target_battery: target + '%',
+          battery_charged: calculation.battery_charged_percentage + '%',
+          target_reached,
+          
+          battery_capacity: calculation.battery_capacity_kwh + ' kWh',
+          power_capacity: calculation.power_capacity_kw + ' kW',
+          charging_efficiency: (calculation.charging_efficiency * 100) + '%',
+          
+          energy_needed: calculation.energy_needed_kwh + ' kWh',
+          energy_delivered: calculation.actual_energy_delivered_kwh + ' kWh',
+          
+          calculation_method: calculation.calculation_method,
+          formula: calculation.formula,
+          
+          status: session.status,
         },
-        calculation,
+        
+        fee_calculation: {
+          base_fee: calculation.base_fee,
+          price_per_kwh: calculation.price_per_kwh,
+          energy_charged: calculation.actual_energy_delivered_kwh + ' kWh',
+          original_charging_fee: original_charging_fee,
+          charging_fee: discounted_charging_fee,
+          
+          base_fee_formatted: is_direct_charging 
+            ? '0 đ (không có phí cơ bản - direct charging)'
+            : calculation.base_fee.toLocaleString('vi-VN') + ' đ',
+          original_charging_fee_formatted: original_charging_fee.toLocaleString('vi-VN') + ' đ',
+          charging_fee_formatted: discounted_charging_fee.toLocaleString('vi-VN') + ' đ',
+          total_amount_formatted: final_total_amount.toLocaleString('vi-VN') + ' đ',
+          
+          ...(discount_amount > 0 && {
+            subscription_discount: {
+              plan_name: subscription_plan_name,
+              discount_percentage: discount_percentage + '%',
+              discount_amount: discount_amount.toLocaleString('vi-VN') + ' đ',
+              note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
+            }
+          }),
+          
+          overtime: {
+            has_overtime: overtime_minutes > 0,
+            overtime_minutes: overtime_minutes,
+            overtime_fee_rate: overtime_fee_rate + ' đ/phút',
+            overtime_fee: overtime_fee,
+            overtime_fee_formatted: overtime_fee.toLocaleString('vi-VN') + ' đ',
+            booking_end_time: booking.end_time ? booking.end_time.toISOString() : null,
+            session_end_time: session.end_time.toISOString(),
+            note: overtime_minutes > 0 
+              ? `Sạc quá ${overtime_minutes} phút so với thời gian booking`
+              : 'Không có phạt quá giờ',
+          },
+          
+          total_amount: final_total_amount,
+        },
+        
+        invoice: {
+          invoice_id: invoice._id,
+          created_at: invoice.createdAt,
+          payment_status: invoice.payment_status,
+          payment_method: invoice.payment_method,
+          total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+        },
+        
+        payment_data: {
+          session_id: session._id,
+          user_id: booking.user_id,
+          vehicle_id: vehicle._id,
+          amount: discounted_charging_fee + overtime_fee,
+          invoice_id: invoice._id,
+          note: is_direct_charging 
+            ? overtime_minutes > 0
+              ? `Direct charging: Chỉ thanh toán phí sạc + Phạt quá giờ (${overtime_minutes} phút × 500 đ/phút = ${overtime_fee.toLocaleString('vi-VN')} đ).`
+              : 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
+            : overtime_minutes > 0
+              ? `Base fee đã được thanh toán khi confirm booking. Cần thanh toán: Charging fee + Phạt quá giờ (${overtime_minutes} phút × 500 đ/phút = ${overtime_fee.toLocaleString('vi-VN')} đ).`
+              : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.',
+        },
       });
     }
     
@@ -654,6 +950,35 @@ exports.updateBatteryLevel = async (req, res) => {
       };
     }
     
+    // ============== CHECK OVERTIME (REAL-TIME) =================
+    // ✅ Tính phạt real-time nếu booking.end_time đã qua
+    const booking = await Booking.findById(session.booking_id);
+    let overtime_warning = null;
+    const overtime_fee_rate = 500; // 500 đồng/phút
+    
+    if (booking && booking.end_time) {
+      const now = new Date();
+      if (now > booking.end_time) {
+        // Booking end_time đã qua, đang tính phạt
+        const overtimeMs = now - booking.end_time;
+        const overtime_minutes = Math.ceil(overtimeMs / (1000 * 60)); // Làm tròn lên
+        const current_overtime_fee = overtime_minutes * overtime_fee_rate;
+        
+        overtime_warning = {
+          message: `⚠️ Đã quá thời gian booking! Đang tính phạt quá giờ.`,
+          booking_end_time: booking.end_time.toISOString(),
+          current_time: now.toISOString(),
+          overtime_minutes: overtime_minutes,
+          overtime_fee_rate: overtime_fee_rate + ' đ/phút',
+          current_overtime_fee: current_overtime_fee,
+          current_overtime_fee_formatted: current_overtime_fee.toLocaleString('vi-VN') + ' đ',
+          note: `Phạt sẽ tiếp tục tính cho đến khi session kết thúc. Hiện tại: ${overtime_minutes} phút × ${overtime_fee_rate} đ/phút = ${current_overtime_fee.toLocaleString('vi-VN')} đ`,
+        };
+        
+        console.log(`⚠️ [Real-time] Overtime in progress: ${overtime_minutes} phút, current penalty: ${current_overtime_fee.toLocaleString('vi-VN')} đ`);
+      }
+    }
+    
     await session.save();
     
     res.status(200).json({
@@ -666,6 +991,7 @@ exports.updateBatteryLevel = async (req, res) => {
         remaining_to_target: Math.max(0, target - current_battery_percentage) + '%',
       },
       warning, // null nếu chưa đạt target
+      overtime_warning, // null nếu chưa quá booking.end_time
       can_continue: current_battery_percentage < 100,
     });
   } catch (error) {

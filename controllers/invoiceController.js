@@ -55,6 +55,13 @@ const formatInvoiceFullDetail = (inv) => {
     price_per_kwh: inv.price_per_kwh,
     original_charging_fee: inv.original_charging_fee || inv.charging_fee,
     charging_fee: inv.charging_fee,
+    
+    // Overtime Penalty
+    booking_end_time: inv.booking_end_time || null,
+    overtime_minutes: inv.overtime_minutes || 0,
+    overtime_fee: inv.overtime_fee || 0,
+    overtime_fee_rate: inv.overtime_fee_rate || 500,
+    
     total_amount: inv.total_amount,
     
     // Subscription Discount
@@ -149,19 +156,20 @@ exports.getUserInvoices = async (req, res) => {
     
     const total = await Invoice.countDocuments(filter);
     
-    // ✅ Tính tổng theo payment_status (unpaid không bao gồm base_fee)
+    // ✅ Tính tổng theo payment_status (unpaid: charging_fee + overtime_fee, paid: total_amount)
     const summary = await Invoice.aggregate([
       { $match: { user_id: new mongoose.Types.ObjectId(user_id) } },
       {
         $group: {
           _id: '$payment_status',
           count: { $sum: 1 },
-          // ✅ Nếu unpaid chỉ lấy charging_fee, còn paid lấy total_amount
+          // ✅ Nếu unpaid: charging_fee + overtime_fee (không có base_fee vì đã thanh toán)
+          // ✅ Nếu paid: total_amount (đầy đủ)
           total_amount: { 
             $sum: { 
               $cond: [
                 { $eq: ['$payment_status', 'unpaid'] },
-                '$charging_fee',  // Chỉ phí sạc
+                { $add: ['$charging_fee', { $ifNull: ['$overtime_fee', 0] }] },  // charging_fee + overtime_fee
                 '$total_amount'   // Tổng đầy đủ
               ]
             }
@@ -184,9 +192,9 @@ exports.getUserInvoices = async (req, res) => {
         total_invoices: total,
         unpaid: {
           count: unpaid.count,
-          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`,  // Chỉ charging_fee
+          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`,  // charging_fee + overtime_fee
           total_energy: `${unpaid.total_energy.toFixed(2)} kWh`,
-          note: 'Base fee already paid at booking confirmation'
+          note: 'Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).'
         },
         paid: {
           count: paid.count,
@@ -268,10 +276,27 @@ exports.getInvoiceDetail = async (req, res) => {
         charging_fee_formatted: `${invoice.charging_fee.toLocaleString(
           'vi-VN'
         )} đ`,
-        total_amount: invoice.total_amount, // ✅ Base fee + discounted charging fee
+        
+        // Overtime Penalty
+        overtime: {
+          has_overtime: (invoice.overtime_minutes || 0) > 0,
+          booking_end_time: invoice.booking_end_time || null,
+          overtime_minutes: invoice.overtime_minutes || 0,
+          overtime_fee_rate: invoice.overtime_fee_rate || 500,
+          overtime_fee: invoice.overtime_fee || 0,
+          overtime_fee_formatted: invoice.overtime_fee 
+            ? `${invoice.overtime_fee.toLocaleString('vi-VN')} đ` 
+            : '0 đ',
+          note: invoice.overtime_minutes > 0 
+            ? `Sạc quá ${invoice.overtime_minutes} phút so với thời gian booking`
+            : 'Không có phạt quá giờ',
+        },
+        
+        total_amount: invoice.total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
         total_amount_formatted: `${invoice.total_amount.toLocaleString(
           'vi-VN'
         )} đ`,
+        
         // Subscription discount (if applicable)
         ...(invoice.discount_amount > 0 && {
           subscription_discount: {
@@ -281,9 +306,31 @@ exports.getInvoiceDetail = async (req, res) => {
             note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
           }
         }),
-        breakdown: invoice.discount_amount > 0
-          ? `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${(invoice.original_charging_fee || invoice.charging_fee).toLocaleString('vi-VN')} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${invoice.discount_percentage}%) = ${invoice.charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${invoice.total_amount.toLocaleString('vi-VN')} đ`
-          : `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + ${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${invoice.charging_fee.toLocaleString('vi-VN')} đ → Tổng: ${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+        
+        breakdown: (() => {
+          let breakdown = '';
+          
+          // Base fee (nếu có)
+          if (invoice.base_fee > 0) {
+            breakdown = `${invoice.base_fee.toLocaleString('vi-VN')} đ (phí cơ bản - đã thanh toán) + `;
+          }
+          
+          // Charging fee
+          if (invoice.discount_amount > 0) {
+            breakdown += `${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${(invoice.original_charging_fee || invoice.charging_fee).toLocaleString('vi-VN')} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${invoice.discount_percentage}%) = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
+          } else {
+            breakdown += `${invoice.energy_delivered_kwh.toFixed(2)} kWh × ${invoice.price_per_kwh.toLocaleString('vi-VN')} đ/kWh = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
+          }
+          
+          // Overtime fee (nếu có)
+          if (invoice.overtime_fee > 0) {
+            breakdown += ` + ${invoice.overtime_minutes} phút × ${(invoice.overtime_fee_rate || 500).toLocaleString('vi-VN')} đ/phút (phạt quá giờ) = ${invoice.overtime_fee.toLocaleString('vi-VN')} đ`;
+          }
+          
+          breakdown += ` → Tổng: ${invoice.total_amount.toLocaleString('vi-VN')} đ`;
+          
+          return breakdown;
+        })(),
       },
       payment: {
         status: invoice.payment_status,
@@ -367,8 +414,10 @@ exports.getUnpaidInvoices = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
     
-    // ✅ Tổng unpaid chỉ tính charging_fee
-    const totalUnpaid = invoices.reduce((sum, inv) => sum + inv.charging_fee, 0);
+    // ✅ Tổng unpaid: charging_fee + overtime_fee (không có base_fee vì đã thanh toán)
+    const totalUnpaid = invoices.reduce((sum, inv) => {
+      return sum + inv.charging_fee + (inv.overtime_fee || 0);
+    }, 0);
     
     // ✅ FORMAT RESPONSE ĐẦY ĐỦ NHƯ INVOICE DETAIL
     const formattedInvoices = invoices.map(inv => formatInvoiceFullDetail(inv));
@@ -379,7 +428,7 @@ exports.getUnpaidInvoices = async (req, res) => {
         count: invoices.length,
         total_unpaid: totalUnpaid,  // Chỉ charging_fee
         total_unpaid_formatted: `${totalUnpaid.toLocaleString('vi-VN')} đ`,
-        note: 'Base fee already paid at booking confirmation. Amount shown is charging fee only.'
+        note: 'Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).'
       },
     });
   } catch (error) {
@@ -463,7 +512,7 @@ exports.getCompanyDriversInvoices = async (req, res) => {
             $sum: {
               $cond: [
                 { $eq: ['$payment_status', 'unpaid'] },
-                '$charging_fee',
+                { $add: ['$charging_fee', { $ifNull: ['$overtime_fee', 0] }] },  // charging_fee + overtime_fee
                 '$total_amount'
               ]
             }
@@ -510,7 +559,7 @@ exports.getCompanyDriversInvoices = async (req, res) => {
           count: unpaid.count,
           total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`,
           total_energy: `${unpaid.total_energy.toFixed(2)} kWh`,
-          note: 'Base fee already paid at booking confirmation'
+          note: 'Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).'
         },
         paid: {
           count: paid.count,

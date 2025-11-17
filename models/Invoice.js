@@ -192,6 +192,30 @@ const invoiceSchema = new mongoose.Schema(
       // ✅ LƯU MÃ GIAO DỊCH TỪ CỔNG THANH TOÁN (MOMO, VNPAY...)
     },
 
+    // ============== OVERTIME PENALTY ==============
+    booking_end_time: {
+      type: Date,
+      // ✅ Thời gian kết thúc booking (để tính phạt)
+      // ✅ Áp dụng cho cả booking và direct charging
+    },
+    overtime_minutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+      // ✅ Số phút vượt quá thời gian booking
+    },
+    overtime_fee: {
+      type: Number,
+      default: 0,
+      min: 0,
+      // ✅ Phí phạt quá giờ (overtime_minutes × 500 đ/phút)
+    },
+    overtime_fee_rate: {
+      type: Number,
+      default: 500,
+      // ✅ Mức phạt mỗi phút (có thể config sau)
+    },
+
     // ============== ADDITIONAL INFO ==============
     station_name: {
       type: String,
@@ -235,19 +259,38 @@ invoiceSchema.virtual("formatted").get(function () {
     total_amount: this.total_amount.toLocaleString("vi-VN") + " đ",
     charging_fee: this.charging_fee.toLocaleString("vi-VN") + " đ",
     base_fee: this.base_fee.toLocaleString("vi-VN") + " đ",
+    overtime_fee: this.overtime_fee > 0 
+      ? this.overtime_fee.toLocaleString("vi-VN") + " đ" 
+      : "0 đ",
     price_per_kwh: this.price_per_kwh.toLocaleString("vi-VN") + " đ/kWh",
     energy_delivered: this.energy_delivered_kwh.toFixed(2) + " kWh",
     battery_charged: this.battery_charged_percentage.toFixed(1) + "%",
     duration: this.charging_duration_formatted,
-    breakdown: `${this.base_fee.toLocaleString(
-      "vi-VN"
-    )} đ (phí cơ bản) + ${this.energy_delivered_kwh.toFixed(
-      2
-    )} kWh × ${this.price_per_kwh.toLocaleString(
-      "vi-VN"
-    )} đ/kWh = ${this.total_amount.toLocaleString("vi-VN")} đ`,
+    breakdown: this.getBreakdownString(),
   };
 });
+
+// Method để format breakdown với overtime
+invoiceSchema.methods.getBreakdownString = function() {
+  let breakdown = '';
+  
+  // Base fee (nếu có)
+  if (this.base_fee > 0) {
+    breakdown = `${this.base_fee.toLocaleString("vi-VN")} đ (phí cơ bản - đã thanh toán) + `;
+  }
+  
+  // Charging fee
+  breakdown += `${this.energy_delivered_kwh.toFixed(2)} kWh × ${this.price_per_kwh.toLocaleString("vi-VN")} đ/kWh = ${(this.base_fee + this.charging_fee).toLocaleString("vi-VN")} đ`;
+  
+  // Overtime fee (nếu có)
+  if (this.overtime_fee > 0) {
+    breakdown += ` + ${this.overtime_minutes} phút × ${this.overtime_fee_rate.toLocaleString("vi-VN")} đ/phút (phạt quá giờ) = ${this.overtime_fee.toLocaleString("vi-VN")} đ`;
+  }
+  
+  breakdown += ` → Tổng: ${this.total_amount.toLocaleString("vi-VN")} đ`;
+  
+  return breakdown;
+};
 
 invoiceSchema.set("toJSON", { virtuals: true });
 invoiceSchema.set("toObject", { virtuals: true });
