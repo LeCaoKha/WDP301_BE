@@ -74,6 +74,13 @@ router.get(
   staffController.getStaffInStation
 );
 
+router.get(
+  "/reports/station/:station_id",
+  verifyToken,
+  checkRole(["staff", "admin"]),
+  staffController.getReportsByStationId
+);
+
 module.exports = router;
 
 /**
@@ -356,6 +363,108 @@ module.exports = router;
  *         description: Access token required
  *       403:
  *         description: Invalid or expired token, hoặc không có quyền admin
+ *       500:
+ *         description: Server error
+ */
+/**
+ * @swagger
+ * /api/staff/reports/station/{station_id}:
+ *   get:
+ *     summary: Lấy tất cả reports theo station_id
+ *     description: >
+ *       Lấy danh sách tất cả reports của một station cụ thể.
+ *       Có thể filter theo status (pending, processing, resolved, rejected).
+ *     tags: [Staff Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: station_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của station cần lấy danh sách reports
+ *         example: "507f1f77bcf86cd799439011"
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, processing, resolved, rejected]
+ *         description: Filter reports theo status (optional)
+ *         example: "pending"
+ *     responses:
+ *       200:
+ *         description: Danh sách reports của station
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 station_id:
+ *                   type: string
+ *                   example: "507f1f77bcf86cd799439011"
+ *                 total:
+ *                   type: integer
+ *                   example: 10
+ *                 status_filter:
+ *                   type: string
+ *                   example: "pending"
+ *                   description: "Chỉ có khi có query parameter status"
+ *                 reports:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *                       content:
+ *                         type: string
+ *                       userId:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           role:
+ *                             type: string
+ *                       station_id:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           address:
+ *                             type: string
+ *                       images:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             imageUrl:
+ *                               type: string
+ *                             imagePublicId:
+ *                               type: string
+ *                       status:
+ *                         type: string
+ *                         enum: [pending, processing, resolved, rejected]
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *       400:
+ *         description: Bad request (thiếu station_id hoặc status không hợp lệ)
+ *       401:
+ *         description: Access token required
+ *       403:
+ *         description: Invalid or expired token, hoặc không có quyền staff/admin
  *       500:
  *         description: Server error
  */

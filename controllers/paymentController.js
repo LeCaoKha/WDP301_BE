@@ -34,7 +34,7 @@ exports.getAllPayments = async (req, res) => {
       .populate({
         path: "invoice_ids",
         select:
-          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+          "final_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -81,7 +81,7 @@ exports.getPaymentById = async (req, res) => {
       .populate({
         path: "invoice_ids",
         select:
-          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+          "final_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
       })
       .lean(); // Use lean() to get plain objects and avoid virtuals
 
@@ -122,7 +122,7 @@ exports.getMyPayments = async (req, res) => {
       .populate({
         path: "invoice_ids",
         select:
-          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+          "final_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -206,7 +206,7 @@ exports.getPaymentsByUserId = async (req, res) => {
       .populate({
         path: "invoice_ids",
         select:
-          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+          "final_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -752,6 +752,7 @@ exports.payForChargingReturn = async (req, res) => {
               payment_status: "paid",
               payment_date: new Date(),
               transaction_id: queryParams.vnp_TransactionNo,
+              final_amount: 0, // ✅ Đã thanh toán xong, final_amount = 0
             },
           }
         );

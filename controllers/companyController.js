@@ -251,7 +251,7 @@ exports.getMyCompanyPayments = async (req, res) => {
       .populate({
         path: "invoice_ids",
         select:
-          "total_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+          "final_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
       })
       .sort({ createdAt: -1 })
       .skip(skip)

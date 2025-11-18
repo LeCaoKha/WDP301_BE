@@ -143,18 +143,13 @@ const formatInvoiceDetailResponse = (invoice) => {
     // ============== PAYMENT DATA ==============
     // ✅ Thông tin số tiền cần thanh toán
     payment_data: {
-      // ✅ Số tiền cần thanh toán
-      // Nếu unpaid: charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
-      // Nếu paid: 0 (đã thanh toán rồi)
-      final_amount:
-        invoice.payment_status === 'unpaid'
-          ? invoice.charging_fee + (invoice.overtime_fee || 0)
-          : 0,
+      // ✅ Số tiền cần thanh toán (lấy từ DB)
+      // Nếu unpaid: final_amount = charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
+      // Nếu paid: final_amount = 0 (đã thanh toán rồi)
+      final_amount: invoice.final_amount || 0,
       final_amount_formatted:
         invoice.payment_status === 'unpaid'
-          ? `${(
-              invoice.charging_fee + (invoice.overtime_fee || 0)
-            ).toLocaleString('vi-VN')} đ`
+          ? `${(invoice.final_amount || 0).toLocaleString('vi-VN')} đ`
           : '0 đ (đã thanh toán)',
       // Chi tiết breakdown
       breakdown:
@@ -174,9 +169,7 @@ const formatInvoiceDetailResponse = (invoice) => {
                   'vi-VN'
                 )} đ)`;
               }
-              breakdown += ` = ${(
-                invoice.charging_fee + (invoice.overtime_fee || 0)
-              ).toLocaleString('vi-VN')} đ`;
+              breakdown += ` = ${(invoice.final_amount || 0).toLocaleString('vi-VN')} đ`;
               return breakdown;
             })()
           : 'Đã thanh toán',
@@ -418,6 +411,7 @@ exports.updatePaymentStatus = async (req, res) => {
 
     if (payment_status === 'paid' && !invoice.payment_date) {
       invoice.payment_date = new Date();
+      invoice.final_amount = 0; // ✅ Đã thanh toán xong, final_amount = 0
     }
 
     await invoice.save();

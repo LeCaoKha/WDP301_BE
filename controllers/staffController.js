@@ -431,3 +431,49 @@ exports.getStaffInStation = async (req, res) => {
     });
   }
 };
+
+// Lấy tất cả reports theo station_id
+exports.getReportsByStationId = async (req, res) => {
+  try {
+    const { station_id } = req.params;
+    const { status } = req.query;
+
+    if (!station_id) {
+      return res.status(400).json({
+        message: "station_id là bắt buộc",
+      });
+    }
+
+    // Build filter
+    const filter = { station_id: station_id };
+
+    // Add status filter if provided
+    if (status) {
+      if (!["pending", "processing", "resolved", "rejected"].includes(status)) {
+        return res.status(400).json({
+          message: "Status không hợp lệ. Các giá trị hợp lệ: pending, processing, resolved, rejected",
+        });
+      }
+      filter.status = status;
+    }
+
+    // Find reports with populate
+    const reports = await StaffReport.find(filter)
+      .populate("userId", "username email role")
+      .populate("station_id", "name address")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      station_id: station_id,
+      total: reports.length,
+      ...(status && { status_filter: status }),
+      reports,
+    });
+  } catch (error) {
+    console.error("Error getting reports by station id:", error);
+    res.status(500).json({
+      message: "Lỗi khi lấy danh sách reports theo station",
+      error: error.message,
+    });
+  }
+};

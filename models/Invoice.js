@@ -148,6 +148,14 @@ const invoiceSchema = new mongoose.Schema(
       // = base_fee + charging_fee (charging_fee đã được discount)
       // ✅ LƯU Ý: Base fee KHÔNG bị discount, chỉ charging fee bị discount
     },
+    final_amount: {
+      type: Number, // 💰 SỐ TIỀN CẦN THANH TOÁN
+      required: true,
+      default: 0,
+      // = charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
+      // ✅ Nếu unpaid: final_amount = charging_fee + overtime_fee
+      // ✅ Nếu paid: final_amount = 0
+    },
 
     // ============== SUBSCRIPTION DISCOUNT ==============
     subscription_id: {

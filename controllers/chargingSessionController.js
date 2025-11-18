@@ -359,6 +359,8 @@ exports.endSession = async (req, res) => {
     // Calculate discounted charging fee and final total amount
     const discounted_charging_fee = original_charging_fee - discount_amount;
     const final_total_amount = base_fee + discounted_charging_fee + overtime_fee; // ✅ Thêm overtime_fee
+    // ✅ Final amount = charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
+    const final_amount = discounted_charging_fee + overtime_fee;
     
     const invoice = await Invoice.create({
       // References
@@ -399,6 +401,7 @@ exports.endSession = async (req, res) => {
       charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount (để lưu vào invoice)
       original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount (để lưu vào invoice)
       total_amount: final_total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
+      final_amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
       
       // Overtime Penalty
       booking_end_time: booking.end_time,
@@ -778,6 +781,8 @@ exports.updateBatteryLevel = async (req, res) => {
       // Calculate discounted charging fee and final total amount
       const discounted_charging_fee = original_charging_fee - discount_amount;
       const final_total_amount = base_fee + discounted_charging_fee + overtime_fee;
+      // ✅ Final amount = charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
+      const final_amount = discounted_charging_fee + overtime_fee;
       
       // Create invoice
       const invoice = await Invoice.create({
@@ -814,6 +819,7 @@ exports.updateBatteryLevel = async (req, res) => {
         charging_fee: discounted_charging_fee,
         original_charging_fee: original_charging_fee,
         total_amount: final_total_amount,
+        final_amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
         
         booking_end_time: booking.end_time,
         overtime_minutes: overtime_minutes,
