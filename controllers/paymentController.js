@@ -590,12 +590,6 @@ exports.payForSubscriptionReturn = async (req, res) => {
   }
 };
 
-// ============== PAY FOR SUBSCRIPTION NO VNPAY (BACKUP API) ==============
-/**
- * Backup payment API for subscription without VNPay
- * This function performs the same operations as payForSubscription but without VNPay integration
- * It directly confirms the payment and creates the subscription
- */
 exports.payForSubscriptionNoVnpay = async (req, res) => {
   try {
     const {
@@ -886,7 +880,7 @@ exports.payForChargingReturn = async (req, res) => {
               payment_status: "paid",
               payment_date: new Date(),
               transaction_id: queryParams.vnp_TransactionNo,
-              final_amount: 0, // ✅ Đã thanh toán xong, final_amount = 0
+              // Keep final_amount unchanged
             },
           }
         );
@@ -935,12 +929,6 @@ exports.payForChargingReturn = async (req, res) => {
   }
 };
 
-// ============== PAY FOR CHARGING NO VNPAY (BACKUP API) ==============
-/**
- * Backup payment API for charging without VNPay
- * This function performs the same operations as payForCharging but without VNPay integration
- * It directly confirms the payment and updates invoice status
- */
 exports.payForChargingNoVnpay = async (req, res) => {
   try {
     const { invoiceId, invoiceIds, amount, userId } = req.body;
@@ -1017,7 +1005,7 @@ exports.payForChargingNoVnpay = async (req, res) => {
               payment_status: "paid",
               payment_date: new Date(),
               transaction_id: transactionNo,
-              final_amount: 0, // ✅ Payment completed, final_amount = 0
+              // Keep final_amount unchanged
             },
           }
         );
@@ -1267,12 +1255,6 @@ exports.payForBaseFeeReturn = async (req, res) => {
   }
 };
 
-// ============== PAY FOR BASE FEE NO VNPAY (BACKUP API) ==============
-/**
- * Backup payment API for base fee without VNPay
- * This function performs the same operations as payForBaseFee but without VNPay integration
- * It directly confirms the payment and calls confirm booking API if booking_id is provided
- */
 exports.payForBaseFeeNoVnpay = async (req, res) => {
   try {
     const { userId, amount, booking_id } = req.body;

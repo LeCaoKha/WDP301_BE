@@ -1,6 +1,6 @@
-const Invoice = require('../models/Invoice');
-const ChargingSession = require('../models/ChargingSession');
-const { default: mongoose } = require('mongoose');
+const Invoice = require("../models/Invoice");
+const ChargingSession = require("../models/ChargingSession");
+const { default: mongoose } = require("mongoose");
 
 // ============== HELPER FUNCTION: FORMAT INVOICE DETAIL RESPONSE ==============
 /**
@@ -44,19 +44,19 @@ const formatInvoiceDetailResponse = (invoice) => {
     },
     pricing: {
       base_fee: invoice.base_fee,
-      base_fee_formatted: `${invoice.base_fee.toLocaleString('vi-VN')} đ`,
+      base_fee_formatted: `${invoice.base_fee.toLocaleString("vi-VN")} đ`,
       price_per_kwh: invoice.price_per_kwh,
       price_per_kwh_formatted: `${invoice.price_per_kwh.toLocaleString(
-        'vi-VN'
+        "vi-VN"
       )} đ/kWh`,
       original_charging_fee:
         invoice.original_charging_fee || invoice.charging_fee,
       original_charging_fee_formatted: `${(
         invoice.original_charging_fee || invoice.charging_fee
-      ).toLocaleString('vi-VN')} đ`,
+      ).toLocaleString("vi-VN")} đ`,
       charging_fee: invoice.charging_fee, // ✅ Đã được discount (nếu có)
       charging_fee_formatted: `${invoice.charging_fee.toLocaleString(
-        'vi-VN'
+        "vi-VN"
       )} đ`,
 
       // Overtime Penalty
@@ -67,37 +67,37 @@ const formatInvoiceDetailResponse = (invoice) => {
         overtime_fee_rate: invoice.overtime_fee_rate || 500,
         overtime_fee: invoice.overtime_fee || 0,
         overtime_fee_formatted: invoice.overtime_fee
-          ? `${invoice.overtime_fee.toLocaleString('vi-VN')} đ`
-          : '0 đ',
+          ? `${invoice.overtime_fee.toLocaleString("vi-VN")} đ`
+          : "0 đ",
         note:
           invoice.overtime_minutes > 0
             ? `Sạc quá ${invoice.overtime_minutes} phút so với thời gian booking`
-            : 'Không có phạt quá giờ',
+            : "Không có phạt quá giờ",
       },
 
       total_amount: invoice.total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
       total_amount_formatted: `${invoice.total_amount.toLocaleString(
-        'vi-VN'
+        "vi-VN"
       )} đ`,
       // Subscription discount (if applicable)
       ...(invoice.discount_amount > 0 && {
         subscription_discount: {
           discount_percentage: `${invoice.discount_percentage}%`,
           discount_amount: `${invoice.discount_amount.toLocaleString(
-            'vi-VN'
+            "vi-VN"
           )} đ`,
           subscription_id: invoice.subscription_id,
-          note: 'Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)',
+          note: "Discount chỉ áp dụng cho phí sạc (charging fee), không áp dụng cho phí cơ bản (base fee)",
         },
       }),
 
       breakdown: (() => {
-        let breakdown = '';
+        let breakdown = "";
 
         // Base fee (nếu có)
         if (invoice.base_fee > 0) {
           breakdown = `${invoice.base_fee.toLocaleString(
-            'vi-VN'
+            "vi-VN"
           )} đ (phí cơ bản - đã thanh toán) + `;
         }
 
@@ -105,21 +105,19 @@ const formatInvoiceDetailResponse = (invoice) => {
         if (invoice.discount_amount > 0) {
           breakdown += `${invoice.energy_delivered_kwh.toFixed(
             2
-          )} kWh × ${invoice.price_per_kwh.toLocaleString(
-            'vi-VN'
-          )} đ/kWh = ${(
+          )} kWh × ${invoice.price_per_kwh.toLocaleString("vi-VN")} đ/kWh = ${(
             invoice.original_charging_fee || invoice.charging_fee
           ).toLocaleString(
-            'vi-VN'
-          )} đ - ${invoice.discount_amount.toLocaleString('vi-VN')} đ (giảm ${
+            "vi-VN"
+          )} đ - ${invoice.discount_amount.toLocaleString("vi-VN")} đ (giảm ${
             invoice.discount_percentage
-          }%) = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
+          }%) = ${invoice.charging_fee.toLocaleString("vi-VN")} đ`;
         } else {
           breakdown += `${invoice.energy_delivered_kwh.toFixed(
             2
           )} kWh × ${invoice.price_per_kwh.toLocaleString(
-            'vi-VN'
-          )} đ/kWh = ${invoice.charging_fee.toLocaleString('vi-VN')} đ`;
+            "vi-VN"
+          )} đ/kWh = ${invoice.charging_fee.toLocaleString("vi-VN")} đ`;
         }
 
         // Overtime fee (nếu có)
@@ -127,14 +125,14 @@ const formatInvoiceDetailResponse = (invoice) => {
           breakdown += ` + ${invoice.overtime_minutes} phút × ${(
             invoice.overtime_fee_rate || 500
           ).toLocaleString(
-            'vi-VN'
+            "vi-VN"
           )} đ/phút (phạt quá giờ) = ${invoice.overtime_fee.toLocaleString(
-            'vi-VN'
+            "vi-VN"
           )} đ`;
         }
 
         breakdown += ` → Tổng: ${invoice.total_amount.toLocaleString(
-          'vi-VN'
+          "vi-VN"
         )} đ`;
 
         return breakdown;
@@ -148,55 +146,55 @@ const formatInvoiceDetailResponse = (invoice) => {
       // Nếu paid: final_amount = 0 (đã thanh toán rồi)
       final_amount: invoice.final_amount || 0,
       final_amount_formatted:
-        invoice.payment_status === 'unpaid'
-          ? `${(invoice.final_amount || 0).toLocaleString('vi-VN')} đ`
-          : '0 đ (đã thanh toán)',
+        invoice.payment_status === "unpaid"
+          ? `${(invoice.final_amount || 0).toLocaleString("vi-VN")} đ`
+          : "0 đ (đã thanh toán)",
       // Chi tiết breakdown
       breakdown:
-        invoice.payment_status === 'unpaid'
+        invoice.payment_status === "unpaid"
           ? (() => {
-              let breakdown = '';
+              let breakdown = "";
               if (invoice.base_fee > 0) {
                 breakdown = `Phí cơ bản (${invoice.base_fee.toLocaleString(
-                  'vi-VN'
+                  "vi-VN"
                 )} đ) đã thanh toán khi confirm booking. `;
               }
               breakdown += `Cần thanh toán: Phí sạc (${invoice.charging_fee.toLocaleString(
-                'vi-VN'
+                "vi-VN"
               )} đ)`;
               if (invoice.overtime_fee > 0) {
                 breakdown += ` + Phạt quá giờ (${invoice.overtime_fee.toLocaleString(
-                  'vi-VN'
+                  "vi-VN"
                 )} đ)`;
               }
-              breakdown += ` = ${(invoice.final_amount || 0).toLocaleString('vi-VN')} đ`;
+              breakdown += ` = ${(invoice.final_amount || 0).toLocaleString(
+                "vi-VN"
+              )} đ`;
               return breakdown;
             })()
-          : 'Đã thanh toán',
+          : "Đã thanh toán",
 
       note:
-        invoice.payment_status === 'unpaid'
+        invoice.payment_status === "unpaid"
           ? invoice.base_fee > 0
             ? invoice.overtime_fee > 0
               ? `Base fee đã được thanh toán khi confirm booking. Cần thanh toán: Charging fee + Phạt quá giờ (${
                   invoice.overtime_minutes
                 } phút × ${(invoice.overtime_fee_rate || 500).toLocaleString(
-                  'vi-VN'
-                )} đ/phút = ${invoice.overtime_fee.toLocaleString(
-                  'vi-VN'
-                )} đ).`
-              : 'Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee.'
+                  "vi-VN"
+                )} đ/phút = ${invoice.overtime_fee.toLocaleString("vi-VN")} đ).`
+              : "Base fee đã được thanh toán khi confirm booking. Chỉ cần thanh toán charging fee."
             : invoice.overtime_fee > 0
             ? `Direct charging: Chỉ thanh toán phí sạc + Phạt quá giờ (${
                 invoice.overtime_minutes
               } phút × ${(invoice.overtime_fee_rate || 500).toLocaleString(
-                'vi-VN'
-              )} đ/phút = ${invoice.overtime_fee.toLocaleString('vi-VN')} đ).`
-            : 'Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc.'
-          : 'Invoice đã được thanh toán',
+                "vi-VN"
+              )} đ/phút = ${invoice.overtime_fee.toLocaleString("vi-VN")} đ).`
+            : "Direct charging: Không có phí cơ bản. Chỉ thanh toán phí sạc."
+          : "Invoice đã được thanh toán",
 
       payment_status: invoice.payment_status,
-      payment_method: invoice.payment_method || 'vnpay',
+      payment_method: invoice.payment_method || "vnpay",
       payment_date: invoice.payment_date || null,
       transaction_id: invoice.transaction_id || null,
     },
@@ -223,7 +221,7 @@ exports.getAllInvoices = async (req, res) => {
 
     // ✅ POPULATE VEHICLE ĐỂ LẤY isActive
     const invoices = await Invoice.find(filter)
-      .populate('vehicle_id', 'isActive')
+      .populate("vehicle_id", "isActive")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -237,8 +235,8 @@ exports.getAllInvoices = async (req, res) => {
       {
         $group: {
           _id: null,
-          total_revenue: { $sum: '$total_amount' },
-          total_energy: { $sum: '$energy_delivered_kwh' },
+          total_revenue: { $sum: "$total_amount" },
+          total_energy: { $sum: "$energy_delivered_kwh" },
           count: { $sum: 1 },
         },
       },
@@ -276,7 +274,7 @@ exports.getUserInvoices = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const invoices = await Invoice.find(filter)
-      .populate('vehicle_id', 'isActive')
+      .populate("vehicle_id", "isActive")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -289,31 +287,31 @@ exports.getUserInvoices = async (req, res) => {
       { $match: { user_id: new mongoose.Types.ObjectId(user_id) } },
       {
         $group: {
-          _id: '$payment_status',
+          _id: "$payment_status",
           count: { $sum: 1 },
           // ✅ Nếu unpaid: charging_fee + overtime_fee (không có base_fee vì đã thanh toán)
           // ✅ Nếu paid: total_amount (đầy đủ)
           total_amount: {
             $sum: {
               $cond: [
-                { $eq: ['$payment_status', 'unpaid'] },
-                { $add: ['$charging_fee', { $ifNull: ['$overtime_fee', 0] }] }, // charging_fee + overtime_fee
-                '$total_amount', // Tổng đầy đủ
+                { $eq: ["$payment_status", "unpaid"] },
+                { $add: ["$charging_fee", { $ifNull: ["$overtime_fee", 0] }] }, // charging_fee + overtime_fee
+                "$total_amount", // Tổng đầy đủ
               ],
             },
           },
-          total_energy: { $sum: '$energy_delivered_kwh' },
+          total_energy: { $sum: "$energy_delivered_kwh" },
         },
       },
     ]);
 
     // Format summary
-    const unpaid = summary.find((s) => s._id === 'unpaid') || {
+    const unpaid = summary.find((s) => s._id === "unpaid") || {
       count: 0,
       total_amount: 0,
       total_energy: 0,
     };
-    const paid = summary.find((s) => s._id === 'paid') || {
+    const paid = summary.find((s) => s._id === "paid") || {
       count: 0,
       total_amount: 0,
       total_energy: 0,
@@ -330,13 +328,13 @@ exports.getUserInvoices = async (req, res) => {
         total_invoices: total,
         unpaid: {
           count: unpaid.count,
-          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`, // charging_fee + overtime_fee
+          total_amount: `${unpaid.total_amount.toLocaleString("vi-VN")} đ`, // charging_fee + overtime_fee
           total_energy: `${unpaid.total_energy.toFixed(2)} kWh`,
-          note: 'Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).',
+          note: "Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).",
         },
         paid: {
           count: paid.count,
-          total_amount: `${paid.total_amount.toLocaleString('vi-VN')} đ`, // Total amount đầy đủ
+          total_amount: `${paid.total_amount.toLocaleString("vi-VN")} đ`, // Total amount đầy đủ
           total_energy: `${paid.total_energy.toFixed(2)} kWh`,
         },
       },
@@ -358,13 +356,13 @@ exports.getInvoiceDetail = async (req, res) => {
     const { invoice_id } = req.params;
 
     const invoice = await Invoice.findById(invoice_id)
-      .populate('vehicle_id', 'isActive plate_number model batteryCapacity')
-      .populate('user_id', 'name email phone')
-      .populate('station_id', 'name address')
+      .populate("vehicle_id", "isActive plate_number model batteryCapacity")
+      .populate("user_id", "name email phone")
+      .populate("station_id", "name address")
       .lean();
 
     if (!invoice) {
-      return res.status(404).json({ message: 'Invoice not found' });
+      return res.status(404).json({ message: "Invoice not found" });
     }
 
     // ✅ FORMAT RESPONSE ĐẦY ĐỦ
@@ -383,23 +381,23 @@ exports.updatePaymentStatus = async (req, res) => {
     const invoice = await Invoice.findById(invoice_id);
 
     if (!invoice) {
-      return res.status(404).json({ message: 'Invoice not found' });
+      return res.status(404).json({ message: "Invoice not found" });
     }
 
     // Validate payment_status
-    const validStatuses = ['unpaid', 'paid', 'refunded', 'cancelled'];
+    const validStatuses = ["unpaid", "paid", "refunded", "cancelled"];
     if (payment_status && !validStatuses.includes(payment_status)) {
       return res.status(400).json({
-        message: 'Invalid payment status',
+        message: "Invalid payment status",
         valid_statuses: validStatuses,
       });
     }
 
     // ✅ CHỈ CHO PHÉP VNPAY
-    if (payment_method && payment_method !== 'vnpay') {
+    if (payment_method && payment_method !== "vnpay") {
       return res.status(400).json({
-        message: 'Invalid payment method. Only VNPay is supported.',
-        valid_method: 'vnpay',
+        message: "Invalid payment method. Only VNPay is supported.",
+        valid_method: "vnpay",
       });
     }
 
@@ -409,22 +407,22 @@ exports.updatePaymentStatus = async (req, res) => {
     if (transaction_id) invoice.transaction_id = transaction_id;
     if (notes) invoice.notes = notes;
 
-    if (payment_status === 'paid' && !invoice.payment_date) {
+    if (payment_status === "paid" && !invoice.payment_date) {
       invoice.payment_date = new Date();
-      invoice.final_amount = 0; // ✅ Đã thanh toán xong, final_amount = 0
+      // Keep final_amount unchanged
     }
 
     await invoice.save();
 
     res.status(200).json({
-      message: 'Payment status updated successfully',
+      message: "Payment status updated successfully",
       invoice: {
         id: invoice._id,
         payment_status: invoice.payment_status,
         payment_method: invoice.payment_method,
         payment_date: invoice.payment_date,
         transaction_id: invoice.transaction_id,
-        total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+        total_amount: `${invoice.total_amount.toLocaleString("vi-VN")} đ`,
       },
     });
   } catch (error) {
@@ -439,9 +437,9 @@ exports.getUnpaidInvoices = async (req, res) => {
 
     const invoices = await Invoice.find({
       user_id,
-      payment_status: 'unpaid',
+      payment_status: "unpaid",
     })
-      .populate('vehicle_id', 'isActive')
+      .populate("vehicle_id", "isActive")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -460,8 +458,8 @@ exports.getUnpaidInvoices = async (req, res) => {
       summary: {
         count: invoices.length,
         total_unpaid: totalUnpaid, // Chỉ charging_fee
-        total_unpaid_formatted: `${totalUnpaid.toLocaleString('vi-VN')} đ`,
-        note: 'Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).',
+        total_unpaid_formatted: `${totalUnpaid.toLocaleString("vi-VN")} đ`,
+        note: "Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).",
       },
     });
   } catch (error) {
@@ -479,19 +477,19 @@ exports.getCompanyDriversInvoices = async (req, res) => {
       end_date,
     } = req.query;
 
-    const Account = require('../models/Account');
-    const Vehicle = require('../models/Vehicle');
+    const Account = require("../models/Account");
+    const Vehicle = require("../models/Vehicle");
 
     // ✅ 1. Tìm tất cả drivers thuộc company
     const companyDrivers = await Account.find({
       company_id: company_id,
-      role: 'driver',
+      role: "driver",
       isCompany: true,
-    }).select('_id username email');
+    }).select("_id username email");
 
     if (!companyDrivers || companyDrivers.length === 0) {
       return res.status(404).json({
-        message: 'No drivers found for this company',
+        message: "No drivers found for this company",
         company_id,
       });
     }
@@ -502,7 +500,7 @@ exports.getCompanyDriversInvoices = async (req, res) => {
     const companyVehicles = await Vehicle.find({
       user_id: { $in: driverIds },
       company_id: company_id,
-    }).select('_id user_id plate_number model');
+    }).select("_id user_id plate_number model");
 
     const vehicleIds = companyVehicles.map((v) => v._id);
 
@@ -526,7 +524,7 @@ exports.getCompanyDriversInvoices = async (req, res) => {
 
     // ✅ 4. Lấy invoices
     const invoices = await Invoice.find(invoiceFilter)
-      .populate('vehicle_id', 'isActive')
+      .populate("vehicle_id", "isActive")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -539,33 +537,33 @@ exports.getCompanyDriversInvoices = async (req, res) => {
       { $match: { vehicle_id: { $in: vehicleIds } } },
       {
         $group: {
-          _id: '$payment_status',
+          _id: "$payment_status",
           count: { $sum: 1 },
           total_amount: {
             $sum: {
               $cond: [
-                { $eq: ['$payment_status', 'unpaid'] },
-                { $add: ['$charging_fee', { $ifNull: ['$overtime_fee', 0] }] }, // charging_fee + overtime_fee
-                '$total_amount',
+                { $eq: ["$payment_status", "unpaid"] },
+                { $add: ["$charging_fee", { $ifNull: ["$overtime_fee", 0] }] }, // charging_fee + overtime_fee
+                "$total_amount",
               ],
             },
           },
-          total_energy: { $sum: '$energy_delivered_kwh' },
+          total_energy: { $sum: "$energy_delivered_kwh" },
         },
       },
     ]);
 
-    const unpaid = summary.find((s) => s._id === 'unpaid') || {
+    const unpaid = summary.find((s) => s._id === "unpaid") || {
       count: 0,
       total_amount: 0,
       total_energy: 0,
     };
-    const paid = summary.find((s) => s._id === 'paid') || {
+    const paid = summary.find((s) => s._id === "paid") || {
       count: 0,
       total_amount: 0,
       total_energy: 0,
     };
-    const refunded = summary.find((s) => s._id === 'refunded') || {
+    const refunded = summary.find((s) => s._id === "refunded") || {
       count: 0,
       total_amount: 0,
       total_energy: 0,
@@ -606,18 +604,18 @@ exports.getCompanyDriversInvoices = async (req, res) => {
         total_invoices: total,
         unpaid: {
           count: unpaid.count,
-          total_amount: `${unpaid.total_amount.toLocaleString('vi-VN')} đ`,
+          total_amount: `${unpaid.total_amount.toLocaleString("vi-VN")} đ`,
           total_energy: `${unpaid.total_energy.toFixed(2)} kWh`,
-          note: 'Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).',
+          note: "Base fee already paid at booking confirmation. Amount includes charging fee + overtime penalty (if any).",
         },
         paid: {
           count: paid.count,
-          total_amount: `${paid.total_amount.toLocaleString('vi-VN')} đ`,
+          total_amount: `${paid.total_amount.toLocaleString("vi-VN")} đ`,
           total_energy: `${paid.total_energy.toFixed(2)} kWh`,
         },
         refunded: {
           count: refunded.count,
-          total_amount: `${refunded.total_amount.toLocaleString('vi-VN')} đ`,
+          total_amount: `${refunded.total_amount.toLocaleString("vi-VN")} đ`,
         },
       },
       pagination: {
