@@ -5,7 +5,8 @@ const chargingSessionSchema = new mongoose.Schema(
     booking_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Booking',
-      required: true,
+      required: false, // ✅ Cho phép null cho guest charging
+      default: null,
     },
     chargingPoint_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -15,7 +16,8 @@ const chargingSessionSchema = new mongoose.Schema(
     vehicle_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Vehicle',
-      required: true,
+      required: false, // ✅ Cho phép null cho guest charging
+      default: null,
     },
     start_time: {
       type: Date,
@@ -121,6 +123,28 @@ const chargingSessionSchema = new mongoose.Schema(
       // ✅ TRUE: Session được tạo từ direct charging (không qua booking trước)
       // ✅ FALSE: Session được tạo từ booking (có base fee)
     },
+    
+    // ============== GUEST VEHICLE INFO (for walk-in customers) ==============
+    guest_plate_number: {
+      type: String,
+      // ✅ Biển số xe cho khách walk-in (không đăng ký trong hệ thống)
+    },
+    guest_vehicle_model: {
+      type: String,
+      // ✅ Model xe cho khách walk-in
+    },
+    guest_battery_capacity: {
+      type: Number,
+      // ✅ Dung lượng pin (kWh) cho khách walk-in
+    },
+    guest_customer_phone: {
+      type: String,
+      // ✅ Số điện thoại khách hàng (để liên hệ)
+    },
+    guest_customer_name: {
+      type: String,
+      // ✅ Tên khách hàng (optional)
+    },
   },
   {
     timestamps: true,
@@ -134,14 +158,27 @@ chargingSessionSchema.methods.calculateCharges = async function () {
   }
   
   const chargingPoint = await mongoose.model('ChargingPoint').findById(this.chargingPoint_id);
-  const vehicle = await mongoose.model('Vehicle').findById(this.vehicle_id);
   
   if (!chargingPoint) {
     throw new Error('Charging point not found');
   }
   
-  if (!vehicle || !vehicle.batteryCapacity) {
-    throw new Error('Vehicle battery capacity not configured');
+  // ✅ Xử lý cả vehicle đã đăng ký và guest vehicle
+  let vehicle = null;
+  let battery_capacity_kwh = null;
+  
+  if (this.vehicle_id) {
+    // Trường hợp 1: Xe đã đăng ký trong hệ thống
+    vehicle = await mongoose.model('Vehicle').findById(this.vehicle_id);
+    if (!vehicle || !vehicle.batteryCapacity) {
+      throw new Error('Vehicle battery capacity not configured');
+    }
+    battery_capacity_kwh = vehicle.batteryCapacity;
+  } else if (this.guest_battery_capacity) {
+    // Trường hợp 2: Guest vehicle (xe chưa đăng ký)
+    battery_capacity_kwh = this.guest_battery_capacity;
+  } else {
+    throw new Error('Vehicle battery capacity is required (either vehicle_id or guest_battery_capacity)');
   }
   
   // ============== 1. TÍNH THỜI GIAN SẠC =================
@@ -160,7 +197,6 @@ chargingSessionSchema.methods.calculateCharges = async function () {
   // Lấy power_capacity từ Station qua ChargingPoint
   await chargingPoint.populate('stationId');
   const power_capacity_kw = chargingPoint.stationId.power_capacity;
-  const battery_capacity_kwh = vehicle.batteryCapacity;
   const charging_efficiency = 0.90; // Hiệu suất 90%
   
   // Initial battery energy (kWh)

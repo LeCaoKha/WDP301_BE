@@ -12,18 +12,21 @@ const invoiceSchema = new mongoose.Schema(
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account",
-      required: true,
+      required: false, // ✅ Cho phép null cho guest charging
+      default: null,
       index: true, // ✅ TÌM INVOICE THEO USER NHANH HƠN
     },
     booking_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
-      required: true,
+      required: false, // ✅ Cho phép null cho guest charging
+      default: null,
     },
     vehicle_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vehicle",
-      required: true,
+      required: false, // ✅ Cho phép null cho guest charging
+      default: null,
     },
     station_id: {
       type: mongoose.Schema.Types.ObjectId,

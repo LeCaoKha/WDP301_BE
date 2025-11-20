@@ -317,10 +317,23 @@ exports.endSession = async (req, res) => {
     const calculation = await session.calculateCharges();
     await session.save();
     
-    const booking = await session.booking_id.populate('station_id');
-    const vehicle = session.vehicle_id;
-    const station = booking.station_id;
-    const chargingPoint = session.chargingPoint_id;
+    // ✅ Xử lý cả trường hợp có booking và không có booking (guest)
+    let booking = null;
+    if (session.booking_id) {
+      booking = await Booking.findById(session.booking_id).populate('station_id');
+    }
+    
+    let vehicle = null;
+    if (session.vehicle_id) {
+      vehicle = await Vehicle.findById(session.vehicle_id);
+    }
+    
+    // Lấy station từ chargingPoint (không phụ thuộc vào booking)
+    const chargingPoint = await ChargingPoint.findById(session.chargingPoint_id).populate('stationId');
+    if (!chargingPoint || !chargingPoint.stationId) {
+      return res.status(404).json({ message: 'Charging point or station not found' });
+    }
+    const station = chargingPoint.stationId;
     
     const target = session.target_battery_percentage || 100;
     const final_battery = calculation.final_battery_percentage;
@@ -374,8 +387,8 @@ exports.endSession = async (req, res) => {
     // ✅ Direct charging: base_fee = 0, Booking: base_fee từ calculation
     const base_fee = is_direct_charging ? 0 : calculation.base_fee;
     
-    // Check if vehicle has active subscription
-    if (vehicle.vehicle_subscription_id) {
+    // Check if vehicle has active subscription (chỉ nếu có vehicle đã đăng ký)
+    if (vehicle && vehicle.vehicle_subscription_id) {
       try {
         const vehicleSubscription = await VehicleSubscription.findById(vehicle.vehicle_subscription_id)
           .populate('subscription_id');
@@ -413,12 +426,24 @@ exports.endSession = async (req, res) => {
     // ✅ Final amount = charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
     const final_amount = discounted_charging_fee + overtime_fee;
     
+    // ✅ Lấy thông tin vehicle (đã đăng ký hoặc guest)
+    let vehicle_plate_number = null;
+    let vehicle_model = null;
+    
+    if (vehicle) {
+      vehicle_plate_number = vehicle.plate_number;
+      vehicle_model = vehicle.model;
+    } else if (session.guest_plate_number) {
+      vehicle_plate_number = session.guest_plate_number;
+      vehicle_model = session.guest_vehicle_model;
+    }
+
     const invoice = await Invoice.create({
       // References
       session_id: session._id,
-      user_id: booking.user_id,
-      booking_id: booking._id,
-      vehicle_id: vehicle._id,
+      user_id: booking ? booking.user_id : null, // null nếu là guest
+      booking_id: booking ? booking._id : null, // null nếu là guest
+      vehicle_id: vehicle ? vehicle._id : null, // null nếu là guest
       station_id: station._id,
       chargingPoint_id: chargingPoint._id,
       
@@ -455,7 +480,7 @@ exports.endSession = async (req, res) => {
       final_amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
       
       // Overtime Penalty
-      booking_end_time: booking.end_time,
+      booking_end_time: booking ? booking.end_time : null, // null nếu là guest charging
       overtime_minutes: overtime_minutes,
       overtime_fee: overtime_fee,
       overtime_fee_rate: overtime_fee_rate,
@@ -468,8 +493,8 @@ exports.endSession = async (req, res) => {
       // Additional Info
       station_name: station.name,
       station_address: station.address,
-      vehicle_plate_number: vehicle.plate_number,
-      vehicle_model: vehicle.model,
+      vehicle_plate_number: vehicle_plate_number,
+      vehicle_model: vehicle_model,
       
       payment_status: 'unpaid',
       payment_method: 'vnpay',
@@ -477,11 +502,15 @@ exports.endSession = async (req, res) => {
     
     await ChargingPoint.findByIdAndUpdate(session.chargingPoint_id._id, {
       status: 'available',
+      current_session_id: null,
     });
     
-    await Booking.findByIdAndUpdate(session.booking_id._id, {
-      status: 'completed',
-    });
+    // Chỉ update booking nếu có booking
+    if (booking) {
+      await Booking.findByIdAndUpdate(session.booking_id._id, {
+        status: 'completed',
+      });
+    }
     
     res.status(200).json({
       message: 'Charging session ended successfully',
@@ -548,7 +577,7 @@ exports.endSession = async (req, res) => {
           overtime_fee_rate: overtime_fee_rate + ' đ/phút',
           overtime_fee: overtime_fee,
           overtime_fee_formatted: overtime_fee.toLocaleString('vi-VN') + ' đ',
-          booking_end_time: booking.end_time ? booking.end_time.toISOString() : null,
+          booking_end_time: booking && booking.end_time ? booking.end_time.toISOString() : null,
           session_end_time: session.end_time.toISOString(),
           note: overtime_minutes > 0 
             ? `Sạc quá ${overtime_minutes} phút so với thời gian booking`
@@ -591,8 +620,14 @@ exports.endSession = async (req, res) => {
       
       payment_data: {
         session_id: session._id,
-        user_id: booking.user_id,
-        vehicle_id: vehicle._id,
+        user_id: booking ? booking.user_id : null,
+        vehicle_id: vehicle ? vehicle._id : null,
+        guest_info: !vehicle ? {
+          plate_number: session.guest_plate_number,
+          model: session.guest_vehicle_model,
+          phone: session.guest_customer_phone,
+          name: session.guest_customer_name,
+        } : null,
         amount: discounted_charging_fee + overtime_fee, // ✅ Bao gồm cả overtime_fee
         invoice_id: invoice._id,
         note: is_direct_charging 
@@ -1059,29 +1094,48 @@ exports.updateBatteryLevel = async (req, res) => {
 // ============== NEW: START DIRECT CHARGING (WITHOUT BOOKING) =================
 /**
  * Start charging session directly without pre-booking
- * Automatically creates a booking and starts the session immediately
+ * Staff can use this API to create session for walk-in customers
  * 
  * @route POST /api/charging-sessions/start-direct
+ * 
+ * Option 1: Registered user/vehicle
  * @body {string} user_id - User ID
  * @body {string} vehicle_id - Vehicle ID
  * @body {string} chargingPoint_id - Charging Point ID
  * @body {number} initial_battery_percentage - Initial battery percentage (0-100)
  * @body {number} target_battery_percentage - Target battery percentage (optional, default: 100)
+ * 
+ * Option 2: Guest/Walk-in customer (no registration required)
+ * @body {string} chargingPoint_id - Charging Point ID
+ * @body {number} initial_battery_percentage - Initial battery percentage (0-100)
+ * @body {number} target_battery_percentage - Target battery percentage (optional, default: 100)
+ * @body {object} vehicle_info - Vehicle information
+ * @body {string} vehicle_info.plate_number - Plate number (required)
+ * @body {string} vehicle_info.model - Vehicle model (required)
+ * @body {number} vehicle_info.batteryCapacity - Battery capacity in kWh (required)
+ * @body {object} customer_info - Customer information (optional)
+ * @body {string} customer_info.phone - Customer phone number
+ * @body {string} customer_info.name - Customer name
  */
 exports.startDirectCharging = async (req, res) => {
   try {
     const {
+      // Option 1: Registered user/vehicle
       user_id,
       vehicle_id,
+      // Option 2: Guest vehicle
+      vehicle_info,
+      customer_info,
+      // Common
       chargingPoint_id,
       initial_battery_percentage,
       target_battery_percentage,
     } = req.body;
 
-    // Validate required fields
-    if (!user_id || !vehicle_id || !chargingPoint_id) {
+    // Validate chargingPoint_id (required for both cases)
+    if (!chargingPoint_id) {
       return res.status(400).json({
-        message: 'user_id, vehicle_id, and chargingPoint_id are required',
+        message: 'chargingPoint_id is required',
       });
     }
 
@@ -1103,23 +1157,6 @@ exports.startDirectCharging = async (req, res) => {
       });
     }
 
-    // Validate user exists
-    const user = await Account.findById(user_id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Validate vehicle exists and belongs to user
-    const vehicle = await Vehicle.findById(vehicle_id);
-    if (!vehicle) {
-      return res.status(404).json({ message: 'Vehicle not found' });
-    }
-    if (vehicle.user_id.toString() !== user_id) {
-      return res.status(403).json({
-        message: 'Vehicle does not belong to this user',
-      });
-    }
-
     // Validate charging point exists
     const chargingPoint = await ChargingPoint.findById(chargingPoint_id).populate('stationId');
     if (!chargingPoint) {
@@ -1134,15 +1171,6 @@ exports.startDirectCharging = async (req, res) => {
       });
     }
 
-    // Check if charging point type allows direct usage (offline) or online
-    // Both types can be used for direct charging, but offline is preferred
-    if (chargingPoint.type !== 'offline' && chargingPoint.type !== 'online') {
-      return res.status(400).json({
-        message: 'Invalid charging point type',
-        current_type: chargingPoint.type,
-      });
-    }
-
     // Get station info for pricing
     const station = chargingPoint.stationId;
     if (!station) {
@@ -1150,43 +1178,117 @@ exports.startDirectCharging = async (req, res) => {
     }
 
     const price_per_kwh = station.price_per_kwh || 3000;
-    const base_fee = station.base_fee || 10000;
     const power_capacity_kw = station.power_capacity;
-
-    // Calculate estimated end time (based on battery capacity and power)
     const now = new Date();
+
+    let vehicle = null;
+    let booking = null;
+    let vehicleData = {}; // Dùng để tính toán và hiển thị
+
+    // ========== TRƯỜNG HỢP 1: XE ĐÃ ĐĂNG KÝ ==========
+    if (user_id && vehicle_id) {
+      const user = await Account.findById(user_id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      vehicle = await Vehicle.findById(vehicle_id);
+      if (!vehicle) {
+        return res.status(404).json({ message: 'Vehicle not found' });
+      }
+
+      if (vehicle.user_id.toString() !== user_id) {
+        return res.status(403).json({
+          message: 'Vehicle does not belong to this user',
+        });
+      }
+
+      vehicleData = {
+        batteryCapacity: vehicle.batteryCapacity,
+        plate_number: vehicle.plate_number,
+        model: vehicle.model,
+      };
+
+      // Tạo booking (optional, có thể bỏ nếu không cần)
+      let estimatedEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+      if (vehicle.batteryCapacity) {
+        const battery_to_charge_percent = target - initial_battery_percentage;
+        const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
+        const charging_efficiency = 0.90;
+        const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
+        estimatedEndTime = new Date(now.getTime() + estimated_hours * 3600000);
+        estimatedEndTime = new Date(estimatedEndTime.getTime() + 30 * 60 * 1000);
+      }
+
+      booking = await Booking.create({
+        user_id: user_id,
+        station_id: station._id,
+        vehicle_id: vehicle_id,
+        chargingPoint_id: chargingPoint_id,
+        start_time: now,
+        end_time: estimatedEndTime,
+        status: 'active',
+      });
+    }
+    // ========== TRƯỜNG HỢP 2: XE CHƯA ĐĂNG KÝ (GUEST/WALK-IN) ==========
+    else if (vehicle_info) {
+      // Validate vehicle_info
+      if (!vehicle_info.plate_number || !vehicle_info.model) {
+        return res.status(400).json({
+          message: 'vehicle_info.plate_number and vehicle_info.model are required for guest charging',
+        });
+      }
+
+      if (!vehicle_info.batteryCapacity || vehicle_info.batteryCapacity <= 0) {
+        return res.status(400).json({
+          message: 'vehicle_info.batteryCapacity is required and must be > 0 (kWh)',
+        });
+      }
+
+      vehicleData = {
+        batteryCapacity: vehicle_info.batteryCapacity,
+        plate_number: vehicle_info.plate_number,
+        model: vehicle_info.model,
+      };
+
+      // KHÔNG TẠO BOOKING cho guest
+      booking = null;
+    }
+    else {
+      return res.status(400).json({
+        message: 'Either (user_id + vehicle_id) or vehicle_info is required',
+        hint: 'For registered users: provide user_id and vehicle_id. For walk-in customers: provide vehicle_info (plate_number, model, batteryCapacity)',
+      });
+    }
+
+    // Calculate estimated time info
+    let estimated_time_info = null;
     let estimatedEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // Default: 2 hours
     
-    if (vehicle.batteryCapacity) {
+    if (vehicleData.batteryCapacity) {
       const battery_to_charge_percent = target - initial_battery_percentage;
-      const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
+      const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicleData.batteryCapacity;
       const charging_efficiency = 0.90;
       const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
       estimatedEndTime = new Date(now.getTime() + estimated_hours * 3600000);
-      
-      // Add 30 minutes buffer
-      estimatedEndTime = new Date(estimatedEndTime.getTime() + 30 * 60 * 1000);
-    }
+      estimatedEndTime = new Date(estimatedEndTime.getTime() + 30 * 60 * 1000); // Add 30 min buffer
 
-    // Create booking automatically with status 'active'
-    const booking = await Booking.create({
-      user_id: user_id,
-      station_id: station._id,
-      vehicle_id: vehicle_id,
-      chargingPoint_id: chargingPoint_id,
-      start_time: now,
-      end_time: estimatedEndTime,
-      status: 'active', // Set to active immediately
-    });
+      estimated_time_info = {
+        energy_needed: energy_needed_kwh.toFixed(2) + ' kWh',
+        estimated_time: estimated_hours.toFixed(2) + ' giờ',
+        estimated_completion: estimatedEndTime.toISOString(),
+        formula: `${energy_needed_kwh.toFixed(2)} kWh ÷ (${power_capacity_kw} kW × 0.9) = ${estimated_hours.toFixed(2)} giờ`,
+      };
+    }
 
     // Generate QR token (optional, for consistency)
     const qrToken = crypto.randomBytes(32).toString('hex');
 
     // Create charging session
-    const session = await ChargingSession.create({
-      booking_id: booking._id,
+    const sessionData = {
+      booking_id: booking ? booking._id : null, // null nếu là guest
       chargingPoint_id: chargingPoint_id,
-      vehicle_id: vehicle_id,
+      vehicle_id: vehicle ? vehicle._id : null, // null nếu là guest
       qr_code_token: qrToken,
       status: 'in_progress', // Start immediately
       start_time: now,
@@ -1196,59 +1298,75 @@ exports.startDirectCharging = async (req, res) => {
       price_per_kwh: price_per_kwh,
       base_fee: 0, // ✅ Direct charging: KHÔNG CÓ BASE FEE
       is_direct_charging: true, // ✅ Đánh dấu là direct charging
-    });
+    };
+
+    // Thêm thông tin guest vehicle nếu là guest
+    if (!vehicle && vehicle_info) {
+      sessionData.guest_plate_number = vehicle_info.plate_number;
+      sessionData.guest_vehicle_model = vehicle_info.model;
+      sessionData.guest_battery_capacity = vehicle_info.batteryCapacity;
+      if (customer_info) {
+        sessionData.guest_customer_phone = customer_info.phone || null;
+        sessionData.guest_customer_name = customer_info.name || null;
+      }
+    }
+
+    const session = await ChargingSession.create(sessionData);
 
     // Update charging point status to in_use
     await ChargingPoint.findByIdAndUpdate(chargingPoint_id, {
       status: 'in_use',
+      current_session_id: session._id,
     });
 
-    // Calculate estimated time info
-    let estimated_time_info = null;
-    if (vehicle.batteryCapacity) {
-      const battery_to_charge_percent = target - initial_battery_percentage;
-      const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
-      const charging_efficiency = 0.90;
-      const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
-      const estimated_completion = new Date(Date.now() + estimated_hours * 3600000);
-
-      estimated_time_info = {
-        energy_needed: energy_needed_kwh.toFixed(2) + ' kWh',
-        estimated_time: estimated_hours.toFixed(2) + ' giờ',
-        estimated_completion: estimated_completion.toISOString(),
-        formula: `${energy_needed_kwh.toFixed(2)} kWh ÷ (${power_capacity_kw} kW × 0.9) = ${estimated_hours.toFixed(2)} giờ`,
-      };
+    // Populate session for response (nếu có vehicle_id và booking_id)
+    if (session.vehicle_id) {
+      await session.populate([
+        { path: 'chargingPoint_id', select: 'name status type' },
+        { path: 'vehicle_id', select: 'plate_number model batteryCapacity' },
+        { path: 'booking_id', select: 'status start_time end_time' },
+      ]);
+    } else {
+      await session.populate([
+        { path: 'chargingPoint_id', select: 'name status type' },
+      ]);
     }
 
-    // Populate session for response
-    await session.populate([
-      { path: 'chargingPoint_id', select: 'name status type' },
-      { path: 'vehicle_id', select: 'plate_number model batteryCapacity' },
-      { path: 'booking_id', select: 'status start_time end_time' },
-    ]);
+    // Build vehicle info for response
+    let vehicleResponse = {};
+    if (vehicle) {
+      vehicleResponse = {
+        id: vehicle._id,
+        plate_number: vehicle.plate_number,
+        model: vehicle.model,
+        battery_capacity: vehicle.batteryCapacity ? vehicle.batteryCapacity + ' kWh' : 'N/A',
+      };
+    } else {
+      vehicleResponse = {
+        plate_number: vehicleData.plate_number,
+        model: vehicleData.model,
+        battery_capacity: vehicleData.batteryCapacity ? vehicleData.batteryCapacity + ' kWh' : 'N/A',
+        note: 'Guest vehicle (not registered in system)',
+      };
+    }
 
     res.status(201).json({
       message: 'Direct charging session started successfully',
       session: {
         id: session._id,
-        booking_id: booking._id,
+        booking_id: booking ? booking._id : null,
         start_time: session.start_time,
         initial_battery: session.initial_battery_percentage + '%',
         target_battery: target + '%',
         battery_to_charge: (target - initial_battery_percentage) + '%',
         status: session.status,
         charging_point: {
-          id: session.chargingPoint_id._id,
-          name: session.chargingPoint_id.name || 'N/A',
-          type: session.chargingPoint_id.type,
+          id: chargingPoint._id,
+          name: chargingPoint.name || 'N/A',
+          type: chargingPoint.type,
           power_capacity: power_capacity_kw + ' kW',
         },
-        vehicle: {
-          id: session.vehicle_id._id,
-          plate_number: session.vehicle_id.plate_number,
-          model: session.vehicle_id.model,
-          battery_capacity: vehicle.batteryCapacity ? vehicle.batteryCapacity + ' kWh' : 'N/A',
-        },
+        vehicle: vehicleResponse,
         station: {
           id: station._id,
           name: station.name,
@@ -1261,12 +1379,13 @@ exports.startDirectCharging = async (req, res) => {
         },
         estimated_time: estimated_time_info,
       },
-      booking_info: {
+      booking_info: booking ? {
         id: booking._id,
         status: booking.status,
         start_time: booking.start_time,
         estimated_end_time: estimatedEndTime,
-      },
+      } : null,
+      customer_info: customer_info || null,
       instructions: {
         auto_stop: 'Session will auto-stop at 100%',
         manual_stop: 'You can stop anytime using POST /api/charging-sessions/:session_id/end',

@@ -281,47 +281,129 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *   post:
  *     summary: Bắt đầu sạc trực tiếp không cần booking trước (Walk-in)
  *     description: |
- *       API này cho phép người dùng đến trạm sạc và bắt đầu sạc ngay lập tức mà không cần booking trước.
- *       Hệ thống sẽ tự động tạo booking và bắt đầu session sạc.
+ *       API này cho phép staff tạo session sạc cho khách hàng mà không cần booking trước.
+ *       Hỗ trợ 2 trường hợp:
  *       
- *       **Use case:** Người dùng đến trạm sạc trực tiếp (walk-in customer)
+ *       1. **Xe đã đăng ký:** Cung cấp user_id và vehicle_id
+ *       2. **Guest/Walk-in:** Cung cấp vehicle_info (không cần đăng ký trong hệ thống)
+ *       
+ *       **Use case:** Staff tạo session cho khách walk-in tại trạm sạc
  *     tags: [Charging Sessions]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - user_id
- *               - vehicle_id
- *               - chargingPoint_id
- *               - initial_battery_percentage
- *             properties:
- *               user_id:
- *                 type: string
- *                 description: ID của user
- *                 example: "690db6df9c04bf86b32651a6"
- *               vehicle_id:
- *                 type: string
- *                 description: ID của xe
- *                 example: "690db6df9c04bf86b32651a7"
- *               chargingPoint_id:
- *                 type: string
- *                 description: ID của charging point (type offline hoặc online)
- *                 example: "690db6df9c04bf86b32651a8"
- *               initial_battery_percentage:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *                 description: % pin hiện tại của xe
- *                 example: 30
- *               target_battery_percentage:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *                 description: % pin muốn sạc đến (mặc định 100%)
- *                 example: 80
+ *             oneOf:
+ *               # Option 1: Registered user/vehicle
+ *               - type: object
+ *                 required:
+ *                   - user_id
+ *                   - vehicle_id
+ *                   - chargingPoint_id
+ *                   - initial_battery_percentage
+ *                 properties:
+ *                   user_id:
+ *                     type: string
+ *                     description: ID của user đã đăng ký
+ *                     example: "690db6df9c04bf86b32651a6"
+ *                   vehicle_id:
+ *                     type: string
+ *                     description: ID của xe đã đăng ký
+ *                     example: "690db6df9c04bf86b32651a7"
+ *                   chargingPoint_id:
+ *                     type: string
+ *                     description: ID của charging point (phải có status = available)
+ *                     example: "690db6df9c04bf86b32651a8"
+ *                   initial_battery_percentage:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 100
+ *                     description: % pin hiện tại của xe
+ *                     example: 30
+ *                   target_battery_percentage:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 100
+ *                     description: % pin muốn sạc đến (mặc định 100%)
+ *                     example: 80
+ *               # Option 2: Guest/Walk-in customer
+ *               - type: object
+ *                 required:
+ *                   - chargingPoint_id
+ *                   - initial_battery_percentage
+ *                   - vehicle_info
+ *                 properties:
+ *                   chargingPoint_id:
+ *                     type: string
+ *                     description: ID của charging point (phải có status = available)
+ *                     example: "690db6df9c04bf86b32651a8"
+ *                   initial_battery_percentage:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 100
+ *                     description: % pin hiện tại của xe
+ *                     example: 30
+ *                   target_battery_percentage:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 100
+ *                     description: % pin muốn sạc đến (mặc định 100%)
+ *                     example: 80
+ *                   vehicle_info:
+ *                     type: object
+ *                     required:
+ *                       - plate_number
+ *                       - model
+ *                       - batteryCapacity
+ *                     properties:
+ *                       plate_number:
+ *                         type: string
+ *                         description: Biển số xe
+ *                         example: "30A-12345"
+ *                       model:
+ *                         type: string
+ *                         description: Model xe
+ *                         example: "Tesla Model 3"
+ *                       batteryCapacity:
+ *                         type: number
+ *                         minimum: 0
+ *                         description: Dung lượng pin (kWh)
+ *                         example: 75
+ *                   customer_info:
+ *                     type: object
+ *                     description: Thông tin khách hàng (optional, để liên hệ)
+ *                     properties:
+ *                       phone:
+ *                         type: string
+ *                         description: Số điện thoại khách hàng
+ *                         example: "0901234567"
+ *                       name:
+ *                         type: string
+ *                         description: Tên khách hàng
+ *                         example: "Nguyễn Văn A"
+ *           examples:
+ *             registered_user:
+ *               summary: Xe đã đăng ký
+ *               value:
+ *                 user_id: "690db6df9c04bf86b32651a6"
+ *                 vehicle_id: "690db6df9c04bf86b32651a7"
+ *                 chargingPoint_id: "690db6df9c04bf86b32651a8"
+ *                 initial_battery_percentage: 30
+ *                 target_battery_percentage: 80
+ *             guest_customer:
+ *               summary: Khách walk-in (chưa đăng ký)
+ *               value:
+ *                 chargingPoint_id: "690db6df9c04bf86b32651a8"
+ *                 initial_battery_percentage: 25
+ *                 target_battery_percentage: 100
+ *                 vehicle_info:
+ *                   plate_number: "30A-12345"
+ *                   model: "Tesla Model 3"
+ *                   batteryCapacity: 75
+ *                 customer_info:
+ *                   phone: "0901234567"
+ *                   name: "Nguyễn Văn A"
  *     responses:
  *       201:
  *         description: Session sạc đã được tạo và bắt đầu thành công
@@ -340,7 +422,8 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                       type: string
  *                     booking_id:
  *                       type: string
- *                       description: ID của booking tự động được tạo
+ *                       nullable: true
+ *                       description: ID của booking (null nếu là guest charging)
  *                     start_time:
  *                       type: string
  *                       format: date-time
@@ -368,9 +451,12 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                           example: "150 kW"
  *                     vehicle:
  *                       type: object
+ *                       description: Thông tin xe (có thể là registered vehicle hoặc guest vehicle)
  *                       properties:
  *                         id:
  *                           type: string
+ *                           nullable: true
+ *                           description: ID của xe (null nếu là guest vehicle)
  *                         plate_number:
  *                           type: string
  *                         model:
@@ -378,6 +464,10 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                         battery_capacity:
  *                           type: string
  *                           example: "80 kWh"
+ *                         note:
+ *                           type: string
+ *                           nullable: true
+ *                           description: "Guest vehicle (not registered in system). Only present for guest vehicles"
  *                     station:
  *                       type: object
  *                       properties:
@@ -392,10 +482,13 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                       properties:
  *                         base_fee:
  *                           type: string
- *                           example: "10,000 đ"
+ *                           example: "0 đ (không có phí cơ bản - direct charging)"
  *                         price_per_kwh:
  *                           type: string
  *                           example: "3,000 đ/kWh"
+ *                         note:
+ *                           type: string
+ *                           example: "Direct charging: Chỉ tính phí sạc theo năng lượng sử dụng, không có phí cơ bản."
  *                     estimated_time:
  *                       type: object
  *                       nullable: true
@@ -411,6 +504,8 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                           format: date-time
  *                 booking_info:
  *                   type: object
+ *                   nullable: true
+ *                   description: Thông tin booking (null nếu là guest charging)
  *                   properties:
  *                     id:
  *                       type: string
@@ -423,6 +518,15 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                     estimated_end_time:
  *                       type: string
  *                       format: date-time
+ *                 customer_info:
+ *                   type: object
+ *                   nullable: true
+ *                   description: Thông tin khách hàng (chỉ có khi là guest charging)
+ *                   properties:
+ *                     phone:
+ *                       type: string
+ *                     name:
+ *                       type: string
  *                 instructions:
  *                   type: object
  *                   properties:
@@ -454,8 +558,21 @@ router.post('/start', chargingSessionController.startSessionByQr);
  *                     message:
  *                       type: string
  *                       example: initial_battery_percentage is required (0-100)
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: Either (user_id + vehicle_id) or vehicle_info is required
+ *                     hint:
+ *                       type: string
+ *                       example: "For registered users: provide user_id and vehicle_id. For walk-in customers: provide vehicle_info (plate_number, model, batteryCapacity)"
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: vehicle_info.plate_number and vehicle_info.model are required for guest charging
  *       403:
- *         description: Vehicle không thuộc về user
+ *         description: Vehicle không thuộc về user (chỉ áp dụng cho registered user)
  *       404:
  *         description: User, Vehicle, Charging Point, hoặc Station không tìm thấy
  */
