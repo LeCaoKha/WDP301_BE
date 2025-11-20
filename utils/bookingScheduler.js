@@ -1,3 +1,4 @@
+const cron = require("node-cron");
 const Booking = require("../models/Booking");
 const ChargingPoint = require("../models/ChargingPoint");
 const ChargingSession = require("../models/ChargingSession");
@@ -186,8 +187,52 @@ const checkBookingsMiddleware = async (req, res, next) => {
   }
 };
 
+/**
+ * Start the booking scheduler using node-cron
+ * This will schedule periodic checks for booking activation and expiration
+ * @param {Object} options - Scheduler options
+ * @param {number} options.intervalMinutes - Interval in minutes (default: 1)
+ * @param {string} options.timezone - Timezone string (default: "Asia/Ho_Chi_Minh")
+ * @returns {Object} - Cron task object for management (start, stop, destroy)
+ */
+const startBookingScheduler = (options = {}) => {
+  const {
+    intervalMinutes = parseInt(process.env.BOOKING_CHECK_INTERVAL) || 1,
+    timezone = "Asia/Ho_Chi_Minh",
+  } = options;
+
+  // Build cron expression: runs every N minutes
+  // Example: '*/1 * * * *' = every 1 minute, '*/5 * * * *' = every 5 minutes
+  const cronExpression = `*/${intervalMinutes} * * * *`;
+
+  console.log(`⏰ Starting booking scheduler (runs every ${intervalMinutes} minute(s))`);
+
+  // Schedule the task using node-cron
+  const task = cron.schedule(
+    cronExpression,
+    async () => {
+      console.log(
+        `⏰ Scheduled check for bookings to activate/expire... (interval: ${intervalMinutes} min)`
+      );
+      try {
+        await activateBookingsAtStartTime();
+        await expirePastBookings();
+      } catch (error) {
+        console.error("❌ Error in scheduled booking check:", error.message);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: timezone,
+    }
+  );
+
+  return task;
+};
+
 module.exports = {
   activateBookingsAtStartTime,
   expirePastBookings,
   checkBookingsMiddleware,
+  startBookingScheduler,
 };

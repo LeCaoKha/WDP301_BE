@@ -13,10 +13,12 @@ const http = require("http");
 const connectDB = require("../config/database");
 const {
   updateExpiredSubscriptions,
+  startSubscriptionScheduler,
 } = require("../utils/subscriptionScheduler");
 const {
   activateBookingsAtStartTime,
   expirePastBookings,
+  startBookingScheduler,
 } = require("../utils/bookingScheduler");
 
 /**
@@ -72,32 +74,18 @@ const startServer = async () => {
     await activateBookingsAtStartTime();
     await expirePastBookings();
 
-    // Schedule periodic checks for subscriptions (every hour)
-    const subscriptionCheckInterval = 60 * 60 * 1000; // 1 hour in milliseconds
-    setInterval(async () => {
-      console.log("⏰ Scheduled check for expired subscriptions...");
-      await updateExpiredSubscriptions();
-    }, subscriptionCheckInterval);
+    // Start subscription scheduler using node-cron
+    // This will run every hour at minute 0 (00:00, 01:00, 02:00, ... 23:00)
+    startSubscriptionScheduler();
 
-    // Schedule periodic checks for bookings
-    // Default: 1 minute for better UX, can be overridden by BOOKING_CHECK_INTERVAL env var
+    // Start booking scheduler using node-cron
+    // Default: every 1 minute, can be overridden by BOOKING_CHECK_INTERVAL env var
     // Format: number in minutes (e.g., 1, 5, 10)
     // Set BOOKING_CHECK_INTERVAL=5 in .env for production if needed
     const bookingCheckIntervalMinutes = parseInt(process.env.BOOKING_CHECK_INTERVAL) || 1;
-    const bookingCheckInterval = bookingCheckIntervalMinutes * 60 * 1000; // Convert to milliseconds
-
-    setInterval(async () => {
-      console.log(`⏰ Scheduled check for bookings to activate/expire... (interval: ${bookingCheckIntervalMinutes} min)`);
-      try {
-        await activateBookingsAtStartTime();
-        await expirePastBookings();
-      } catch (error) {
-        console.error("❌ Error in scheduled booking check:", error.message);
-      }
-    }, bookingCheckInterval);
-
-    console.log(`⏰ Subscription expiry checker scheduled (runs every hour)`);
-    console.log(`⏰ Booking activation checker scheduled (runs every ${bookingCheckIntervalMinutes} minute(s))`);
+    startBookingScheduler({
+      intervalMinutes: bookingCheckIntervalMinutes,
+    });
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

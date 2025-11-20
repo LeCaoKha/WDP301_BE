@@ -1,3 +1,4 @@
+const cron = require("node-cron");
 const VehicleSubscription = require("../models/VehicleSubscription");
 
 /**
@@ -51,7 +52,46 @@ const checkExpiredSubscriptionsMiddleware = async (req, res, next) => {
   }
 };
 
+/**
+ * Start the subscription scheduler using node-cron
+ * This will schedule periodic checks for expired subscriptions
+ * @param {Object} options - Scheduler options
+ * @param {string} options.cronExpression - Cron expression (default: "0 * * * *" - every hour at minute 0)
+ * @param {string} options.timezone - Timezone string (default: "Asia/Ho_Chi_Minh")
+ * @returns {Object} - Cron task object for management (start, stop, destroy)
+ */
+const startSubscriptionScheduler = (options = {}) => {
+  const {
+    cronExpression = "0 * * * *", // Every hour at minute 0
+    timezone = "Asia/Ho_Chi_Minh",
+  } = options;
+
+  console.log(
+    `⏰ Starting subscription scheduler (runs every hour at minute 0)`
+  );
+
+  // Schedule the task using node-cron
+  const task = cron.schedule(
+    cronExpression,
+    async () => {
+      console.log("⏰ Scheduled check for expired subscriptions...");
+      try {
+        await updateExpiredSubscriptions();
+      } catch (error) {
+        console.error("❌ Error in scheduled subscription check:", error.message);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: timezone,
+    }
+  );
+
+  return task;
+};
+
 module.exports = {
   updateExpiredSubscriptions,
   checkExpiredSubscriptionsMiddleware,
+  startSubscriptionScheduler,
 };
