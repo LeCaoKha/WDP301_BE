@@ -232,11 +232,46 @@ exports.updateStation = async (req, res) => {
 //Delete a station
 exports.deleteStation = async (req, res) => {
   try {
-    const station = await Station.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+
+    // Find station first to check if it exists
+    const station = await Station.findById(id);
     if (!station) {
       return res.status(404).json({ error: "Station not found" });
     }
-    res.status(204).send();
+
+    // Find all staff accounts with station_id matching the station to be deleted
+    const staffAccounts = await Account.find({
+      station_id: id,
+      role: "staff",
+    });
+
+    // Set station_id = null for all staff accounts
+    let updatedStaffCount = 0;
+    if (staffAccounts.length > 0) {
+      const updateResult = await Account.updateMany(
+        { station_id: id },
+        { station_id: null }
+      );
+      updatedStaffCount = updateResult.modifiedCount;
+    }
+
+    // Delete the station
+    await Station.findByIdAndDelete(id);
+
+    res.status(200).json({
+      message: "Station deleted successfully",
+      station: {
+        _id: station._id,
+        name: station.name,
+        address: station.address,
+      },
+      staffsUpdated: updatedStaffCount,
+      note:
+        updatedStaffCount > 0
+          ? `${updatedStaffCount} staff account(s) had their station_id set to null`
+          : "No staff accounts were affected",
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

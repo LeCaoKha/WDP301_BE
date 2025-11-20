@@ -11,6 +11,7 @@ const app = require("../app");
 const debug = require("debug")("evdriver:server");
 const http = require("http");
 const connectDB = require("../config/database");
+const { initializeSocket } = require("../socket/socketService");
 const {
   updateExpiredSubscriptions,
   startSubscriptionScheduler,
@@ -20,6 +21,9 @@ const {
   expirePastBookings,
   startBookingScheduler,
 } = require("../utils/bookingScheduler");
+const {
+  startChargingSessionScheduler,
+} = require("../utils/chargingSessionScheduler");
 
 /**
  * Normalize a port into a number, string, or false.
@@ -54,6 +58,9 @@ app.set("port", port);
 
 const server = http.createServer(app);
 
+// Initialize Socket.io
+initializeSocket(server);
+
 /**
  * Connect to MongoDB then start server
  */
@@ -85,6 +92,12 @@ const startServer = async () => {
     const bookingCheckIntervalMinutes = parseInt(process.env.BOOKING_CHECK_INTERVAL) || 1;
     startBookingScheduler({
       intervalMinutes: bookingCheckIntervalMinutes,
+    });
+
+    // ✅ Start charging session scheduler (auto-update battery)
+    const chargingUpdateInterval = parseInt(process.env.CHARGING_UPDATE_INTERVAL) || 5; // Default: 5 seconds
+    startChargingSessionScheduler({
+      intervalSeconds: chargingUpdateInterval,
     });
   } catch (error) {
     console.error("Failed to start server:", error);

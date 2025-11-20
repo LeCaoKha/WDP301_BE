@@ -6,6 +6,7 @@ const Invoice = require('../models/Invoice');
 const Station = require('../models/Station');
 const Vehicle = require('../models/Vehicle');
 const Account = require('../models/Account');
+const { emitBatteryUpdate, emitSessionStatusChange } = require('../socket/socketService'); // ✅ THÊM DÒNG NÀY
 
 // ============== 1. GENERATE QR CODE =================
 exports.generateQRCode = async (req, res) => {
@@ -934,6 +935,17 @@ exports.updateBatteryLevel = async (req, res) => {
         status: 'completed',
       });
       
+      // ✅ EMIT SOCKET EVENT - Session completed
+      emitSessionStatusChange(session_id, {
+        status: 'completed',
+        message: '🔋 Session auto-stopped: Battery FULL (100%)',
+        auto_stopped: true,
+        final_battery: calculation.final_battery_percentage,
+        target_reached: target_reached,
+        duration: durationFormatted,
+        total_amount: final_total_amount,
+      });
+      
       return res.status(200).json({
         message: '🔋 Session auto-stopped: Battery FULL (100%)',
         auto_stopped: true,
@@ -1072,6 +1084,21 @@ exports.updateBatteryLevel = async (req, res) => {
     }
     
     await session.save();
+    
+    // ✅ EMIT SOCKET EVENT - Battery update
+    emitBatteryUpdate(session_id, {
+      battery: {
+        initial: session.initial_battery_percentage,
+        current: current_battery_percentage,
+        target: target,
+        charged: current_battery_percentage - session.initial_battery_percentage,
+        remaining_to_target: Math.max(0, target - current_battery_percentage),
+        target_reached: current_battery_percentage >= target,
+      },
+      warning: warning,
+      overtime_warning: overtime_warning,
+      can_continue: current_battery_percentage < 100,
+    });
     
     res.status(200).json({
       message: 'Battery level updated',
