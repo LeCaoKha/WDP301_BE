@@ -590,12 +590,6 @@ exports.payForSubscriptionReturn = async (req, res) => {
   }
 };
 
-// ============== PAY FOR SUBSCRIPTION NO VNPAY (BACKUP API) ==============
-/**
- * Backup payment API for subscription without VNPay
- * This function performs the same operations as payForSubscription but without VNPay integration
- * It directly confirms the payment and creates the subscription
- */
 exports.payForSubscriptionNoVnpay = async (req, res) => {
   try {
     const {
@@ -609,11 +603,12 @@ exports.payForSubscriptionNoVnpay = async (req, res) => {
 
     // Validate required fields
     if (!amount || !vehicle_id || !subscription_id || !userId) {
-      return res.redirect(
-        `evchargingapp://payment/return?status=failed&responseMessage=${encodeURIComponent(
-          "Missing required fields: amount, vehicle_id, subscription_id, userId"
-        )}&type=subscription`
-      );
+      return res.status(400).json({
+        status: "failed",
+        message:
+          "Missing required fields: amount, vehicle_id, subscription_id, userId",
+        type: "subscription",
+      });
     }
 
     // Generate transaction reference
@@ -650,11 +645,12 @@ exports.payForSubscriptionNoVnpay = async (req, res) => {
       // ✅ Get subscription plan to calculate billing cycle
       const subscriptionPlan = await SubscriptionPlan.findById(subscription_id);
       if (!subscriptionPlan) {
-        return res.redirect(
-          `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseMessage=${encodeURIComponent(
-            "Subscription plan not found"
-          )}&type=subscription`
-        );
+        return res.status(404).json({
+          status: "failed",
+          message: "Subscription plan not found",
+          txnRef: txnRef,
+          type: "subscription",
+        });
       }
 
       // ✅ Calculate start_date and end_date based on billing_cycle
@@ -700,27 +696,48 @@ exports.payForSubscriptionNoVnpay = async (req, res) => {
         "✅ Đã tạo VehicleSubscription mới (không qua VNPay) - Payment confirmed"
       );
 
-      // Redirect về app - success
-      return res.redirect(
-        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${transactionNo}&amount=${amount}&vehicleSubscriptionId=${vehicleSubscription._id}&type=subscription`
-      );
+      // Populate payment để trả về đầy đủ thông tin
+      const paymentWithDetails = await Payment.findById(newPayment._id)
+        .populate("madeBy", "username email phone")
+        .lean();
+
+      // Return JSON response with full payment information
+      return res.status(200).json({
+        status: "success",
+        message: "Payment processed successfully",
+        type: "subscription",
+        payment: paymentWithDetails,
+        transaction: {
+          txnRef: txnRef,
+          transactionNo: transactionNo,
+          amount: amount,
+        },
+        vehicleSubscription: {
+          id: vehicleSubscription._id,
+          vehicle_id: vehicleSubscription.vehicle_id,
+          subscription_id: vehicleSubscription.subscription_id,
+          start_date: vehicleSubscription.start_date,
+          end_date: vehicleSubscription.end_date,
+          auto_renew: vehicleSubscription.auto_renew,
+          payment_status: vehicleSubscription.payment_status,
+        },
+      });
     } catch (error) {
       console.error("❌ Lỗi trong payForSubscriptionNoVnpay:", error);
-      // Redirect về app - error
-      return res.redirect(
-        `evchargingapp://payment/return?status=error&txnRef=${txnRef}&message=${encodeURIComponent(
-          error.message || "Error processing payment"
-        )}&type=subscription`
-      );
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Error processing payment",
+        txnRef: txnRef || null,
+        type: "subscription",
+      });
     }
   } catch (error) {
     console.error("❌ Lỗi trong payForSubscriptionNoVnpay:", error);
-    // Redirect về app - error
-    return res.redirect(
-      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
-        error.message || "Error processing payment"
-      )}&type=subscription`
-    );
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Error processing payment",
+      type: "subscription",
+    });
   }
 };
 
@@ -886,7 +903,7 @@ exports.payForChargingReturn = async (req, res) => {
               payment_status: "paid",
               payment_date: new Date(),
               transaction_id: queryParams.vnp_TransactionNo,
-              final_amount: 0, // ✅ Đã thanh toán xong, final_amount = 0
+              // Keep final_amount unchanged
             },
           }
         );
@@ -935,12 +952,6 @@ exports.payForChargingReturn = async (req, res) => {
   }
 };
 
-// ============== PAY FOR CHARGING NO VNPAY (BACKUP API) ==============
-/**
- * Backup payment API for charging without VNPay
- * This function performs the same operations as payForCharging but without VNPay integration
- * It directly confirms the payment and updates invoice status
- */
 exports.payForChargingNoVnpay = async (req, res) => {
   try {
     const { invoiceId, invoiceIds, amount, userId } = req.body;
@@ -955,11 +966,12 @@ exports.payForChargingNoVnpay = async (req, res) => {
 
     // Validate required fields
     if (invoiceIdArray.length === 0 || !amount || !userId) {
-      return res.redirect(
-        `evchargingapp://payment/return?status=failed&responseMessage=${encodeURIComponent(
-          "Missing required fields: invoiceId/invoiceIds (array), amount, userId"
-        )}&type=charging`
-      );
+      return res.status(400).json({
+        status: "failed",
+        message:
+          "Missing required fields: invoiceId/invoiceIds (array), amount, userId",
+        type: "charging",
+      });
     }
 
     // Generate transaction reference
@@ -1017,7 +1029,7 @@ exports.payForChargingNoVnpay = async (req, res) => {
               payment_status: "paid",
               payment_date: new Date(),
               transaction_id: transactionNo,
-              final_amount: 0, // ✅ Payment completed, final_amount = 0
+              // Keep final_amount unchanged
             },
           }
         );
@@ -1037,29 +1049,62 @@ exports.payForChargingNoVnpay = async (req, res) => {
         "✅ Đã tạo Payment mới cho charging (không qua VNPay) - Payment confirmed"
       );
 
-      // Redirect về app - success
-      return res.redirect(
-        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${transactionNo}&amount=${amount}&invoiceCount=${
-          invoiceIdArray.length
-        }&invoiceIds=${invoiceIdArray.join(",")}&type=charging`
-      );
+      // Populate payment để trả về đầy đủ thông tin
+      const paymentWithDetails = await Payment.findById(newPayment._id)
+        .populate("madeBy", "username email phone")
+        .populate({
+          path: "companyId",
+          select: "name address contact_email",
+        })
+        .populate({
+          path: "invoice_ids",
+          select:
+            "final_amount payment_status station_name vehicle_plate_number start_time end_time charging_duration_formatted energy_delivered_kwh",
+        })
+        .lean();
+
+      // Filter out null invoices from invoice_ids array
+      if (
+        paymentWithDetails.invoice_ids &&
+        Array.isArray(paymentWithDetails.invoice_ids)
+      ) {
+        paymentWithDetails.invoice_ids = paymentWithDetails.invoice_ids.filter(
+          (inv) => inv !== null && inv !== undefined
+        );
+      }
+
+      // Return JSON response with full payment information
+      return res.status(200).json({
+        status: "success",
+        message: "Payment processed successfully",
+        type: "charging",
+        payment: paymentWithDetails,
+        transaction: {
+          txnRef: txnRef,
+          transactionNo: transactionNo,
+          amount: amount,
+        },
+        invoices: {
+          count: invoiceIdArray.length,
+          ids: invoiceIdArray,
+        },
+      });
     } catch (error) {
       console.error("❌ Lỗi trong payForChargingNoVnpay:", error);
-      // Redirect về app - error
-      return res.redirect(
-        `evchargingapp://payment/return?status=error&txnRef=${txnRef}&message=${encodeURIComponent(
-          error.message || "Error processing payment"
-        )}&type=charging`
-      );
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Error processing payment",
+        txnRef: txnRef || null,
+        type: "charging",
+      });
     }
   } catch (error) {
     console.error("❌ Lỗi trong payForChargingNoVnpay:", error);
-    // Redirect về app - error
-    return res.redirect(
-      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
-        error.message || "Error processing payment"
-      )}&type=charging`
-    );
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Error processing payment",
+      type: "charging",
+    });
   }
 };
 
@@ -1267,23 +1312,17 @@ exports.payForBaseFeeReturn = async (req, res) => {
   }
 };
 
-// ============== PAY FOR BASE FEE NO VNPAY (BACKUP API) ==============
-/**
- * Backup payment API for base fee without VNPay
- * This function performs the same operations as payForBaseFee but without VNPay integration
- * It directly confirms the payment and calls confirm booking API if booking_id is provided
- */
 exports.payForBaseFeeNoVnpay = async (req, res) => {
   try {
     const { userId, amount, booking_id } = req.body;
 
     // Validate required fields
     if (!amount || !userId) {
-      return res.redirect(
-        `evchargingapp://payment/return?status=failed&responseMessage=${encodeURIComponent(
-          "Missing required fields: amount, userId"
-        )}&type=base_fee`
-      );
+      return res.status(400).json({
+        status: "failed",
+        message: "Missing required fields: amount, userId",
+        type: "base_fee",
+      });
     }
 
     // Generate transaction reference
@@ -1325,6 +1364,7 @@ exports.payForBaseFeeNoVnpay = async (req, res) => {
       );
 
       // ✅ Call confirm booking API if booking_id is provided
+      let bookingConfirmation = null;
       if (booking_id) {
         try {
           // Extract base URL from request or environment
@@ -1366,37 +1406,63 @@ exports.payForBaseFeeNoVnpay = async (req, res) => {
             "✅ Đã confirm booking thành công:",
             confirmResponse.data
           );
+          bookingConfirmation = {
+            success: true,
+            booking_id: booking_id,
+            data: confirmResponse.data,
+          };
         } catch (confirmError) {
           console.error(
             "❌ Lỗi khi gọi API confirm booking:",
             confirmError.response?.data || confirmError.message
           );
+          bookingConfirmation = {
+            success: false,
+            booking_id: booking_id,
+            error: confirmError.response?.data || confirmError.message,
+          };
           // Don't throw error, payment is successful, just log booking confirmation error
         }
       }
 
-      // Redirect về app - success
-      return res.redirect(
-        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${transactionNo}&amount=${amount}&type=base_fee${
-          booking_id ? `&booking_id=${booking_id}` : ""
-        }`
-      );
+      // Populate payment để trả về đầy đủ thông tin
+      const paymentWithDetails = await Payment.findById(newPayment._id)
+        .populate("madeBy", "username email phone")
+        .lean();
+
+      // Return JSON response with full payment information
+      return res.status(200).json({
+        status: "success",
+        message: "Payment processed successfully",
+        type: "base_fee",
+        payment: paymentWithDetails,
+        transaction: {
+          txnRef: txnRef,
+          transactionNo: transactionNo,
+          amount: amount,
+        },
+        ...(booking_id && {
+          booking: {
+            id: booking_id,
+            confirmation: bookingConfirmation,
+          },
+        }),
+      });
     } catch (error) {
       console.error("❌ Lỗi trong payForBaseFeeNoVnpay:", error);
-      // Redirect về app - error
-      return res.redirect(
-        `evchargingapp://payment/return?status=error&txnRef=${txnRef}&message=${encodeURIComponent(
-          error.message || "Error processing payment"
-        )}&type=base_fee`
-      );
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Error processing payment",
+        txnRef: txnRef || null,
+        type: "base_fee",
+      });
     }
   } catch (error) {
     console.error("❌ Lỗi trong payForBaseFeeNoVnpay:", error);
-    // Redirect về app - error
-    return res.redirect(
-      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
-        error.message || "Error processing payment"
-      )}&type=base_fee`
-    );
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Error processing payment",
+      type: "base_fee",
+    });
   }
 };
