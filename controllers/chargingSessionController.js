@@ -21,6 +21,26 @@ exports.generateQRCode = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
     
+    // Check if booking is expired or cancelled
+    if (['expired', 'cancelled'].includes(booking.status)) {
+      return res.status(400).json({
+        message: 'Cannot generate QR code for expired or cancelled booking',
+        current_status: booking.status,
+        booking_id: booking._id,
+      });
+    }
+    
+    // Check if booking end_time has passed
+    const now = new Date();
+    if (booking.end_time < now) {
+      return res.status(400).json({
+        message: 'Booking has expired. Cannot generate QR code after booking end time',
+        booking_end_time: booking.end_time,
+        current_time: now,
+        booking_id: booking._id,
+      });
+    }
+    
     if (!['confirmed', 'pending'].includes(booking.status)) {
       return res.status(400).json({
         message: 'Booking must be confirmed or pending',
@@ -112,6 +132,37 @@ exports.startSessionByQr = async (req, res) => {
     //     confirm_endpoint: `/api/bookings/${booking._id}/confirm`,
     //   });
     // }
+    
+    // ✅ Check if booking is expired or cancelled
+    if (!booking) {
+      return res.status(404).json({
+        message: 'Booking not found for this session',
+      });
+    }
+    
+    if (['expired', 'cancelled'].includes(booking.status)) {
+      return res.status(400).json({
+        message: 'Cannot start session for expired or cancelled booking',
+        current_status: booking.status,
+        booking_id: booking._id,
+      });
+    }
+    
+    // ✅ Check if booking end_time has passed (allow 15 minutes buffer for late arrival)
+    const now = new Date();
+    const bufferMinutes = 15; // Allow 15 minutes after end_time
+    const allowedEndTime = new Date(booking.end_time.getTime() + bufferMinutes * 60 * 1000);
+    
+    if (now > allowedEndTime) {
+      return res.status(400).json({
+        message: 'Booking has expired. Cannot start session after booking end time',
+        booking_end_time: booking.end_time,
+        current_time: now,
+        allowed_until: allowedEndTime,
+        booking_id: booking._id,
+        note: `Booking expired ${Math.round((now - booking.end_time) / (1000 * 60))} minutes ago`,
+      });
+    }
     
     // Validate
     if (
