@@ -4,7 +4,14 @@ const paymentSchema = new mongoose.Schema({
   madeBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Account",
-    required: true,
+    required: false, // ✅ Optional for walk-in customers
+  },
+  // ✅ Guest customer info (for walk-in customers)
+  guest_info: {
+    name: String,
+    phone: String,
+    plate_number: String,
+    vehicle_model: String,
   },
   type: {
     type: String,

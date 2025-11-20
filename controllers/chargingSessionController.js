@@ -439,6 +439,31 @@ exports.endSession = async (req, res) => {
       vehicle_model = session.guest_vehicle_model;
     }
 
+    // ✅ Lấy thông tin khách hàng (registered user hoặc walk-in guest)
+    let customer_info = null;
+    if (booking && booking.user_id) {
+      // Registered user
+      const user = await Account.findById(booking.user_id).select('username email phone');
+      if (user) {
+        customer_info = {
+          type: 'registered',
+          user_id: user._id,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+        };
+      }
+    } else if (session.guest_customer_name || session.guest_customer_phone) {
+      // Walk-in guest customer
+      customer_info = {
+        type: 'walk-in',
+        name: session.guest_customer_name || null,
+        phone: session.guest_customer_phone || null,
+        plate_number: session.guest_plate_number || null,
+        vehicle_model: session.guest_vehicle_model || null,
+      };
+    }
+
     const invoice = await Invoice.create({
       // References
       session_id: session._id,
@@ -546,6 +571,9 @@ exports.endSession = async (req, res) => {
         status: session.status,
       },
       
+      // ✅ Customer information (registered user or walk-in guest)
+      customer_info: customer_info,
+      
       fee_calculation: {
         base_fee: calculation.base_fee,
         price_per_kwh: calculation.price_per_kwh,
@@ -553,6 +581,7 @@ exports.endSession = async (req, res) => {
         original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount
         charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount
         total_amount: final_total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
+        final_amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
         
         base_fee_formatted: is_direct_charging 
           ? '0 đ (không có phí cơ bản - direct charging)'
@@ -560,6 +589,7 @@ exports.endSession = async (req, res) => {
         original_charging_fee_formatted: original_charging_fee.toLocaleString('vi-VN') + ' đ',
         charging_fee_formatted: discounted_charging_fee.toLocaleString('vi-VN') + ' đ',
         total_amount_formatted: final_total_amount.toLocaleString('vi-VN') + ' đ',
+        final_amount_formatted: final_amount.toLocaleString('vi-VN') + ' đ', // ✅ Số tiền cần thanh toán
         
         // Subscription discount info (if applicable)
         ...(discount_amount > 0 && {
@@ -617,6 +647,7 @@ exports.endSession = async (req, res) => {
         payment_status: invoice.payment_status,
         payment_method: invoice.payment_method,
         total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+        final_amount: `${invoice.final_amount.toLocaleString('vi-VN')} đ`, // ✅ Số tiền cần thanh toán
       },
       
       payment_data: {
@@ -629,7 +660,8 @@ exports.endSession = async (req, res) => {
           phone: session.guest_customer_phone,
           name: session.guest_customer_name,
         } : null,
-        amount: discounted_charging_fee + overtime_fee, // ✅ Bao gồm cả overtime_fee
+        amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
+        final_amount: final_amount, // ✅ Số tiền cần thanh toán (alias cho amount)
         invoice_id: invoice._id,
         note: is_direct_charging 
           ? overtime_minutes > 0
@@ -782,11 +814,23 @@ exports.updateBatteryLevel = async (req, res) => {
       const calculation = await session.calculateCharges();
       await session.save();
       
-      // Populate booking với station_id để tính toán
-      const booking = await Booking.findById(session.booking_id).populate('station_id');
-      const vehicle = session.vehicle_id;
-      const station = booking.station_id;
-      const chargingPoint = session.chargingPoint_id;
+      // ✅ Xử lý cả trường hợp có booking và không có booking (guest)
+      let booking = null;
+      if (session.booking_id) {
+        booking = await Booking.findById(session.booking_id).populate('station_id');
+      }
+
+      let vehicle = null;
+      if (session.vehicle_id) {
+        vehicle = await Vehicle.findById(session.vehicle_id);
+      }
+
+      // Lấy station từ chargingPoint (không phụ thuộc vào booking)
+      const chargingPoint = await ChargingPoint.findById(session.chargingPoint_id).populate('stationId');
+      if (!chargingPoint || !chargingPoint.stationId) {
+        return res.status(404).json({ message: 'Charging point or station not found' });
+      }
+      const station = chargingPoint.stationId;
       
       const target = session.target_battery_percentage || 100;
       const final_battery = calculation.final_battery_percentage;
@@ -871,12 +915,49 @@ exports.updateBatteryLevel = async (req, res) => {
       // ✅ Final amount = charging_fee + overtime_fee (base_fee đã thanh toán khi confirm booking)
       const final_amount = discounted_charging_fee + overtime_fee;
       
+      // ✅ Lấy thông tin vehicle (đã đăng ký hoặc guest)
+      let vehicle_plate_number = null;
+      let vehicle_model = null;
+      
+      if (vehicle) {
+        vehicle_plate_number = vehicle.plate_number;
+        vehicle_model = vehicle.model;
+      } else if (session.guest_plate_number) {
+        vehicle_plate_number = session.guest_plate_number;
+        vehicle_model = session.guest_vehicle_model;
+      }
+
+      // ✅ Lấy thông tin khách hàng (registered user hoặc walk-in guest)
+      let customer_info = null;
+      if (booking && booking.user_id) {
+        // Registered user
+        const user = await Account.findById(booking.user_id).select('username email phone');
+        if (user) {
+          customer_info = {
+            type: 'registered',
+            user_id: user._id,
+            username: user.username,
+            email: user.email,
+            phone: user.phone,
+          };
+        }
+      } else if (session.guest_customer_name || session.guest_customer_phone) {
+        // Walk-in guest customer
+        customer_info = {
+          type: 'walk-in',
+          name: session.guest_customer_name || null,
+          phone: session.guest_customer_phone || null,
+          plate_number: session.guest_plate_number || null,
+          vehicle_model: session.guest_vehicle_model || null,
+        };
+      }
+      
       // Create invoice
       const invoice = await Invoice.create({
         session_id: session._id,
-        user_id: booking.user_id,
-        booking_id: booking._id,
-        vehicle_id: vehicle._id,
+        user_id: booking ? booking.user_id : null, // null nếu là guest
+        booking_id: booking ? booking._id : null, // null nếu là guest
+        vehicle_id: vehicle ? vehicle._id : null, // null nếu là guest
         station_id: station._id,
         chargingPoint_id: chargingPoint._id,
         
@@ -908,7 +989,7 @@ exports.updateBatteryLevel = async (req, res) => {
         total_amount: final_total_amount,
         final_amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
         
-        booking_end_time: booking.end_time,
+        booking_end_time: booking ? booking.end_time : null, // null nếu là guest charging
         overtime_minutes: overtime_minutes,
         overtime_fee: overtime_fee,
         overtime_fee_rate: overtime_fee_rate,
@@ -919,21 +1000,25 @@ exports.updateBatteryLevel = async (req, res) => {
         
         station_name: station.name,
         station_address: station.address,
-        vehicle_plate_number: vehicle.plate_number,
-        vehicle_model: vehicle.model,
+        vehicle_plate_number: vehicle_plate_number,
+        vehicle_model: vehicle_model,
         
         payment_status: 'unpaid',
         payment_method: 'vnpay',
       });
       
-      // Update charging point & booking
+      // Update charging point
       await ChargingPoint.findByIdAndUpdate(session.chargingPoint_id._id, {
         status: 'available',
+        current_session_id: null,
       });
       
-      await Booking.findByIdAndUpdate(session.booking_id, {
-        status: 'completed',
-      });
+      // Update booking if exists
+      if (booking) {
+        await Booking.findByIdAndUpdate(session.booking_id, {
+          status: 'completed',
+        });
+      }
       
       // ✅ EMIT SOCKET EVENT - Session completed
       emitSessionStatusChange(session_id, {
@@ -944,6 +1029,8 @@ exports.updateBatteryLevel = async (req, res) => {
         target_reached: target_reached,
         duration: durationFormatted,
         total_amount: final_total_amount,
+        final_amount: final_amount, // ✅ Số tiền cần thanh toán
+        invoice_id: invoice._id,
       });
       
       return res.status(200).json({
@@ -978,12 +1065,17 @@ exports.updateBatteryLevel = async (req, res) => {
           status: session.status,
         },
         
+        // ✅ Customer information (registered user or walk-in guest)
+        customer_info: customer_info,
+        
         fee_calculation: {
           base_fee: calculation.base_fee,
           price_per_kwh: calculation.price_per_kwh,
           energy_charged: calculation.actual_energy_delivered_kwh + ' kWh',
           original_charging_fee: original_charging_fee,
           charging_fee: discounted_charging_fee,
+          total_amount: final_total_amount, // ✅ Base fee + discounted charging fee + overtime_fee
+          final_amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
           
           base_fee_formatted: is_direct_charging 
             ? '0 đ (không có phí cơ bản - direct charging)'
@@ -991,6 +1083,7 @@ exports.updateBatteryLevel = async (req, res) => {
           original_charging_fee_formatted: original_charging_fee.toLocaleString('vi-VN') + ' đ',
           charging_fee_formatted: discounted_charging_fee.toLocaleString('vi-VN') + ' đ',
           total_amount_formatted: final_total_amount.toLocaleString('vi-VN') + ' đ',
+          final_amount_formatted: final_amount.toLocaleString('vi-VN') + ' đ', // ✅ Số tiền cần thanh toán
           
           ...(discount_amount > 0 && {
             subscription_discount: {
@@ -1013,8 +1106,6 @@ exports.updateBatteryLevel = async (req, res) => {
               ? `Sạc quá ${overtime_minutes} phút so với thời gian booking`
               : 'Không có phạt quá giờ',
           },
-          
-          total_amount: final_total_amount,
         },
         
         invoice: {
@@ -1023,13 +1114,21 @@ exports.updateBatteryLevel = async (req, res) => {
           payment_status: invoice.payment_status,
           payment_method: invoice.payment_method,
           total_amount: `${invoice.total_amount.toLocaleString('vi-VN')} đ`,
+          final_amount: `${invoice.final_amount.toLocaleString('vi-VN')} đ`, // ✅ Số tiền cần thanh toán
         },
         
         payment_data: {
           session_id: session._id,
-          user_id: booking.user_id,
-          vehicle_id: vehicle._id,
-          amount: discounted_charging_fee + overtime_fee,
+          user_id: booking ? booking.user_id : null,
+          vehicle_id: vehicle ? vehicle._id : null,
+          guest_info: !vehicle ? {
+            plate_number: session.guest_plate_number,
+            model: session.guest_vehicle_model,
+            phone: session.guest_customer_phone,
+            name: session.guest_customer_name,
+          } : null,
+          amount: final_amount, // ✅ Số tiền cần thanh toán: charging_fee + overtime_fee
+          final_amount: final_amount, // ✅ Số tiền cần thanh toán (alias cho amount)
           invoice_id: invoice._id,
           note: is_direct_charging 
             ? overtime_minutes > 0
