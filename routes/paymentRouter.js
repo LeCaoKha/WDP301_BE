@@ -2,10 +2,13 @@ const express = require("express");
 const {
   payForSubscription,
   payForSubscriptionReturn,
+  payForSubscriptionNoVnpay,
   payForCharging,
   payForChargingReturn,
+  payForChargingNoVnpay,
   payForBaseFee,
   payForBaseFeeReturn,
+  payForBaseFeeNoVnpay,
   paymentTest,
   paymentTestReturn,
   getAllPayments,
@@ -22,10 +25,13 @@ router.post("/payment-test", paymentTest);
 router.get("/payment-test-return/:txnRef", paymentTestReturn);
 router.post("/pay-for-subscription", payForSubscription);
 router.get("/pay-for-subscription-return/:txnRef", payForSubscriptionReturn);
+router.post("/pay-for-subscription-no-vnpay", payForSubscriptionNoVnpay); // Backup API without VNPay
 router.post("/pay-for-charging", payForCharging);
 router.get("/pay-for-charging-return/:txnRef", payForChargingReturn);
+router.post("/pay-for-charging-no-vnpay", payForChargingNoVnpay); // Backup API without VNPay
 router.post("/pay-for-base-fee", payForBaseFee);
 router.get("/pay-for-base-fee-return/:txnRef", payForBaseFeeReturn);
+router.post("/pay-for-base-fee-no-vnpay", payForBaseFeeNoVnpay); // Backup API without VNPay
 
 // Payment query routes (order matters - specific routes before dynamic routes)
 router.get("/", authenticateToken, getAllPayments);
@@ -684,6 +690,198 @@ module.exports = router;
  *                 message:
  *                   type: string
  *                   example: "Missing required fields: invoiceIds (array), amount, userId"
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/payment/pay-for-subscription-no-vnpay:
+ *   post:
+ *     summary: Backup API - Pay for subscription without VNPay (direct confirmation)
+ *     description: >
+ *       Backup payment API for subscription purchase that bypasses VNPay integration.
+ *       This API directly confirms the payment and creates the subscription without going through VNPay.
+ *       Use this API when VNPay service is unavailable or experiencing issues.
+ *       The payment will be automatically confirmed and the subscription will be created immediately.
+ *       Redirects to app with success/fail status instead of returning JSON.
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *               - vehicle_id
+ *               - subscription_id
+ *               - userId
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: Payment amount in VND
+ *                 example: 500000
+ *               vehicle_id:
+ *                 type: string
+ *                 description: ID of the vehicle
+ *                 example: "507f1f77bcf86cd799439011"
+ *               subscription_id:
+ *                 type: string
+ *                 description: ID of the subscription plan (start_date and end_date will be auto-calculated)
+ *                 example: "507f1f77bcf86cd799439012"
+ *               userId:
+ *                 type: string
+ *                 description: ID of the user making the payment
+ *                 example: "507f1f77bcf86cd799439013"
+ *               auto_renew:
+ *                 type: number
+ *                 description: Whether the subscription should auto-renew (0 = false, 1 = true)
+ *                 default: 0
+ *                 example: 0
+ *               payment_status:
+ *                 type: number
+ *                 description: Initial payment status
+ *                 default: 0
+ *                 example: 0
+ *     responses:
+ *       302:
+ *         description: Redirects to app with payment status
+ *         headers:
+ *           Location:
+ *             schema:
+ *               type: string
+ *             description: Redirect URL to app (evchargingapp://payment/return?status=success/failed/error&...)
+ *       400:
+ *         description: Invalid request body or validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Missing required fields: amount, vehicle_id, subscription_id, userId"
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/payment/pay-for-charging-no-vnpay:
+ *   post:
+ *     summary: Backup API - Pay for charging without VNPay (direct confirmation)
+ *     description: >
+ *       Backup payment API for charging fee payment that bypasses VNPay integration.
+ *       This API directly confirms the payment and updates invoice status without going through VNPay.
+ *       Use this API when VNPay service is unavailable or experiencing issues.
+ *       Supports both single invoiceId and array invoiceIds.
+ *       The payment will be automatically confirmed and all invoices will be updated to "paid" status immediately.
+ *       Redirects to app with success/fail status instead of returning JSON.
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *               - userId
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: Total payment amount in VND for all invoices
+ *                 example: 155000
+ *               invoiceId:
+ *                 type: string
+ *                 description: Single invoice ID to pay (alternative to invoiceIds)
+ *                 example: "507f1f77bcf86cd799439015"
+ *               invoiceIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of invoice IDs to pay (can contain single or multiple invoice IDs). Alternative to invoiceId.
+ *                 example: ["507f1f77bcf86cd799439015", "507f1f77bcf86cd799439016"]
+ *               userId:
+ *                 type: string
+ *                 description: ID of the user making the payment
+ *                 example: "507f1f77bcf86cd799439013"
+ *     responses:
+ *       302:
+ *         description: Redirects to app with payment status
+ *         headers:
+ *           Location:
+ *             schema:
+ *               type: string
+ *             description: Redirect URL to app (evchargingapp://payment/return?status=success/failed/error&...)
+ *       400:
+ *         description: Invalid request body or validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Missing required fields: invoiceId/invoiceIds (array), amount, userId"
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @swagger
+ * /api/payment/pay-for-base-fee-no-vnpay:
+ *   post:
+ *     summary: Backup API - Pay for base fee without VNPay (direct confirmation)
+ *     description: >
+ *       Backup payment API for base fee payment that bypasses VNPay integration.
+ *       This API directly confirms the payment without going through VNPay.
+ *       Use this API when VNPay service is unavailable or experiencing issues.
+ *       If booking_id is provided, the booking will be automatically confirmed after successful payment.
+ *       The payment will be automatically confirmed immediately.
+ *       Redirects to app with success/fail status instead of returning JSON.
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *               - userId
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: Payment amount in VND
+ *                 example: 50000
+ *               userId:
+ *                 type: string
+ *                 description: ID of the user making the payment
+ *                 example: "507f1f77bcf86cd799439013"
+ *               booking_id:
+ *                 type: string
+ *                 description: ID of the booking to confirm after successful payment (optional)
+ *                 example: "507f1f77bcf86cd799439014"
+ *     responses:
+ *       302:
+ *         description: Redirects to app with payment status
+ *         headers:
+ *           Location:
+ *             schema:
+ *               type: string
+ *             description: Redirect URL to app (evchargingapp://payment/return?status=success/failed/error&...)
+ *       400:
+ *         description: Invalid request body or validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Missing required fields: amount, userId"
  *       500:
  *         description: Internal server error
  */
