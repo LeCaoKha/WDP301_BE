@@ -94,12 +94,21 @@ exports.login = async (req, res) => {
     //Save refresh token in database
     account.refreshToken = refreshToken;
     await account.save();
-    res.status(200).json({
+
+    // Build response object
+    const response = {
       accessToken,
       refreshToken,
       accountId: account._id,
       role: account.role,
-    });
+    };
+
+    // Add company_id if isCompany is true
+    if (account.isCompany === true) {
+      response.company_id = account.company_id;
+    }
+
+    res.status(200).json(response);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
