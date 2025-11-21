@@ -84,6 +84,12 @@ exports.login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
+    // Check if account status is inactive
+    if (account.status === "inactive") {
+      return res.status(403).json({
+        message: "Account is inactive. Please contact administrator.",
+      });
+    }
     const { accessToken, refreshToken } = createToken(account);
     //Save refresh token in database
     account.refreshToken = refreshToken;
