@@ -1335,26 +1335,8 @@ exports.startDirectCharging = async (req, res) => {
         model: vehicle.model,
       };
 
-      // Tạo booking (optional, có thể bỏ nếu không cần)
-      let estimatedEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      if (vehicle.batteryCapacity) {
-        const battery_to_charge_percent = target - initial_battery_percentage;
-        const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
-        const charging_efficiency = 0.90;
-        const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
-        estimatedEndTime = new Date(now.getTime() + estimated_hours * 3600000);
-        estimatedEndTime = new Date(estimatedEndTime.getTime() + 30 * 60 * 1000);
-      }
-
-      booking = await Booking.create({
-        user_id: user_id,
-        station_id: station._id,
-        vehicle_id: vehicle_id,
-        chargingPoint_id: chargingPoint_id,
-        start_time: now,
-        end_time: estimatedEndTime,
-        status: 'active',
-      });
+      // Direct charging: Không tạo booking cho xe đã đăng ký
+      booking = null;
     }
     // ========== TRƯỜNG HỢP 2: XE CHƯA ĐĂNG KÝ (GUEST/WALK-IN) ==========
     else if (vehicle_info) {
