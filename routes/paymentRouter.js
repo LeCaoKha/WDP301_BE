@@ -645,6 +645,9 @@ module.exports = router;
  *       Create a payment URL to pay for one or multiple charging invoices.
  *       Pass `invoiceIds` (array of strings) - can contain single or multiple invoice IDs.
  *       After successful payment, all invoices will be updated to "paid" status and saved in the `invoice_ids` array.
+ *       The `type` parameter determines the redirect destination after payment:
+ *       - "app" (default): Redirects to mobile app (evchargingapp://payment/return?...)
+ *       - "web": Redirects to web frontend (http://localhost:5173/payment/success or /payment/fail)
  *     tags: [Payment]
  *     requestBody:
  *       required: true
@@ -671,6 +674,12 @@ module.exports = router;
  *                 type: string
  *                 description: ID of the user making the payment
  *                 example: "507f1f77bcf86cd799439013"
+ *               type:
+ *                 type: string
+ *                 enum: [app, web]
+ *                 default: app
+ *                 description: Payment type - determines redirect destination after payment. "app" redirects to mobile app, "web" redirects to web frontend.
+ *                 example: "app"
  *     responses:
  *       201:
  *         description: VNPay payment URL created successfully

@@ -743,7 +743,14 @@ exports.payForSubscriptionNoVnpay = async (req, res) => {
 
 exports.payForCharging = async (req, res) => {
   try {
-    const { invoiceId, invoiceIds, amount, userId, guest_info } = req.body;
+    const {
+      invoiceId,
+      invoiceIds,
+      amount,
+      userId,
+      guest_info,
+      type = "app",
+    } = req.body;
 
     // Support both single invoiceId and array invoiceIds
     let invoiceIdArray = [];
@@ -778,6 +785,9 @@ exports.payForCharging = async (req, res) => {
       }
     }
 
+    // Validate type parameter (app or web, default to app)
+    const paymentType = type === "web" ? "web" : "app";
+
     const vnpay = new VNPay({
       tmnCode,
       secureSecret,
@@ -795,6 +805,7 @@ exports.payForCharging = async (req, res) => {
     const orderInfoParams = {
       invoiceIds: invoiceIdArray.join(","), // Convert array to comma-separated string
       type: "charging",
+      paymentType: paymentType, // Store payment type (app or web)
     };
 
     if (userId) {
@@ -875,7 +886,12 @@ exports.payForChargingReturn = async (req, res) => {
         new URLSearchParams(decodedOrderInfo)
       );
 
-      const { invoiceIds, userId, guest_info } = parsedInfo;
+      const {
+        invoiceIds,
+        userId,
+        guest_info,
+        paymentType = "app",
+      } = parsedInfo;
 
       // Parse invoiceIds from comma-separated string to array
       const invoiceIdArray = invoiceIds
@@ -884,11 +900,20 @@ exports.payForChargingReturn = async (req, res) => {
 
       if (invoiceIdArray.length === 0) {
         console.error("No invoice IDs found in order info");
-        return res.redirect(
-          `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
-            "No invoice IDs found"
-          )}&type=charging`
-        );
+        // Redirect based on payment type
+        if (paymentType === "web") {
+          return res.redirect(
+            `http://localhost:5173/payment/fail?status=error&message=${encodeURIComponent(
+              "No invoice IDs found"
+            )}&type=charging`
+          );
+        } else {
+          return res.redirect(
+            `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
+              "No invoice IDs found"
+            )}&type=charging`
+          );
+        }
       }
 
       // Import Invoice model
@@ -908,7 +933,9 @@ exports.payForChargingReturn = async (req, res) => {
       let companyId = null;
       if (userId) {
         try {
-          const userAccount = await Account.findById(userId).select("company_id");
+          const userAccount = await Account.findById(userId).select(
+            "company_id"
+          );
           if (userAccount && userAccount.company_id) {
             companyId = userAccount.company_id;
           }
@@ -966,33 +993,111 @@ exports.payForChargingReturn = async (req, res) => {
         "✅ Đã tạo Payment mới cho charging sau thanh toán thành công"
       );
 
-      // Redirect về app
-      return res.redirect(
-        `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${
-          queryParams.vnp_TransactionNo
-        }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceCount=${
-          invoiceIdArray.length
-        }&invoiceIds=${invoiceIdArray.join(",")}&type=charging`
-      );
+      // Redirect based on payment type (app or web)
+      if (paymentType === "web") {
+        // Redirect to web frontend success page
+        return res.redirect(
+          `http://localhost:5173/payment/success?txnRef=${txnRef}&transactionNo=${
+            queryParams.vnp_TransactionNo
+          }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceCount=${
+            invoiceIdArray.length
+          }&invoiceIds=${invoiceIdArray.join(",")}&type=charging`
+        );
+      } else {
+        // Redirect to app (default behavior)
+        return res.redirect(
+          `evchargingapp://payment/return?status=success&txnRef=${txnRef}&transactionNo=${
+            queryParams.vnp_TransactionNo
+          }&amount=${Number(queryParams.vnp_Amount) / 100}&invoiceCount=${
+            invoiceIdArray.length
+          }&invoiceIds=${invoiceIdArray.join(",")}&type=charging`
+        );
+      }
     }
 
-    // ❌ Hash sai hoặc không thành công - redirect về app
+    // ❌ Hash sai hoặc không thành công - redirect based on payment type
     console.warn("VNPay signature mismatch or failed payment");
-    return res.redirect(
-      `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseCode=${
-        queryParams.vnp_ResponseCode || ""
-      }&responseMessage=${encodeURIComponent(
-        queryParams.vnp_ResponseMessage || "Payment failed"
-      )}&type=charging`
-    );
+
+    // Try to get paymentType from orderInfo if available
+    let paymentType = "app";
+    try {
+      const decodedOrderInfo = decodeURIComponent(
+        queryParams.vnp_OrderInfo || ""
+      );
+      const parsedInfo = Object.fromEntries(
+        new URLSearchParams(decodedOrderInfo)
+      );
+      paymentType = parsedInfo.paymentType === "web" ? "web" : "app";
+    } catch (e) {
+      // Default to app if cannot parse
+    }
+
+    if (paymentType === "web") {
+      // Redirect to web frontend fail page
+      return res.redirect(
+        `http://localhost:5173/payment/fail?txnRef=${txnRef}&responseCode=${
+          queryParams.vnp_ResponseCode || ""
+        }&responseMessage=${encodeURIComponent(
+          queryParams.vnp_ResponseMessage || "Payment failed"
+        )}&type=charging`
+      );
+    } else {
+      // Redirect to app (default behavior)
+      return res.redirect(
+        `evchargingapp://payment/return?status=failed&txnRef=${txnRef}&responseCode=${
+          queryParams.vnp_ResponseCode || ""
+        }&responseMessage=${encodeURIComponent(
+          queryParams.vnp_ResponseMessage || "Payment failed"
+        )}&type=charging`
+      );
+    }
   } catch (error) {
     console.error("❌ Lỗi xử lý return từ VNPay cho charging:", error);
-    // Redirect về app
-    return res.redirect(
-      `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
-        error.message || "Error processing payment return"
-      )}&type=charging`
-    );
+
+    // Try to get paymentType from orderInfo if available
+    let paymentType = "app";
+    try {
+      const rawUrl = req.originalUrl || req.url;
+      const parsedUrl = url.parse(rawUrl);
+      const rawQuery = parsedUrl.query || "";
+      const errorQueryParams = rawQuery
+        .split("&")
+        .filter((p) => p && p.includes("="))
+        .reduce((acc, param) => {
+          const idx = param.indexOf("=");
+          const key = param.substring(0, idx);
+          const value = param.substring(idx + 1);
+          acc[key] = value;
+          return acc;
+        }, {});
+
+      const decodedOrderInfo = decodeURIComponent(
+        errorQueryParams.vnp_OrderInfo || ""
+      );
+      const parsedInfo = Object.fromEntries(
+        new URLSearchParams(decodedOrderInfo)
+      );
+      paymentType = parsedInfo.paymentType === "web" ? "web" : "app";
+    } catch (e) {
+      // Default to app if cannot parse
+    }
+
+    // Redirect based on payment type
+    if (paymentType === "web") {
+      // Redirect to web frontend error page
+      return res.redirect(
+        `http://localhost:5173/payment/fail?status=error&message=${encodeURIComponent(
+          error.message || "Error processing payment return"
+        )}&type=charging`
+      );
+    } else {
+      // Redirect to app (default behavior)
+      return res.redirect(
+        `evchargingapp://payment/return?status=error&message=${encodeURIComponent(
+          error.message || "Error processing payment return"
+        )}&type=charging`
+      );
+    }
   }
 };
 
@@ -1070,7 +1175,9 @@ exports.payForChargingNoVnpay = async (req, res) => {
       let companyId = null;
       if (userId) {
         try {
-          const userAccount = await Account.findById(userId).select("company_id");
+          const userAccount = await Account.findById(userId).select(
+            "company_id"
+          );
           if (userAccount && userAccount.company_id) {
             companyId = userAccount.company_id;
           }
@@ -1081,12 +1188,14 @@ exports.payForChargingNoVnpay = async (req, res) => {
       }
 
       // ✅ Prepare guest_info for payment record
-      const paymentGuestInfo = guest_info ? {
-        name: guest_info.name || null,
-        phone: guest_info.phone || null,
-        plate_number: guest_info.plate_number || null,
-        vehicle_model: guest_info.vehicle_model || null,
-      } : null;
+      const paymentGuestInfo = guest_info
+        ? {
+            name: guest_info.name || null,
+            phone: guest_info.phone || null,
+            plate_number: guest_info.plate_number || null,
+            vehicle_model: guest_info.vehicle_model || null,
+          }
+        : null;
 
       // ✅ Create payment record with fixed type = "charging"
       const newPayment = new Payment({
