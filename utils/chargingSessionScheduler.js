@@ -294,12 +294,15 @@ async function autoCompleteSessionWithInvoice(session, currentBattery, target) {
       vehicle_model = session.guest_vehicle_model;
     }
 
+    // ✅ Get user_id: từ booking (nếu có) hoặc từ vehicle.user_id (direct charging với registered user)
+    const invoice_user_id = booking ? booking.user_id : (vehicle ? vehicle.user_id : null);
+
     // ✅ CREATE INVOICE
     const invoice = await Invoice.create({
       session_id: session._id,
-      user_id: booking ? booking.user_id : null,
-      booking_id: booking ? booking._id : null,
-      vehicle_id: vehicle ? vehicle._id : null,
+      user_id: invoice_user_id, // ✅ Từ booking hoặc vehicle.user_id (direct charging) hoặc null (guest)
+      booking_id: booking ? booking._id : null, // null nếu là guest hoặc direct charging
+      vehicle_id: vehicle ? vehicle._id : null, // null nếu là guest
       station_id: station._id,
       chargingPoint_id: chargingPoint._id,
       
@@ -324,7 +327,7 @@ async function autoCompleteSessionWithInvoice(session, currentBattery, target) {
         ? 'battery_based' 
         : 'time_based',
       
-      base_fee: calculation.base_fee,
+      base_fee: base_fee, // ✅ Use calculated base_fee (0 for direct charging, calculation.base_fee for booking)
       price_per_kwh: calculation.price_per_kwh,
       charging_fee: discounted_charging_fee,
       original_charging_fee: original_charging_fee,
