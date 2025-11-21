@@ -743,7 +743,14 @@ exports.payForSubscriptionNoVnpay = async (req, res) => {
 
 exports.payForCharging = async (req, res) => {
   try {
-    const { invoiceId, invoiceIds, amount, userId, type = "app" } = req.body;
+    const {
+      invoiceId,
+      invoiceIds,
+      amount,
+      userId,
+      guest_info,
+      type = "app",
+    } = req.body;
 
     // Support both single invoiceId and array invoiceIds
     let invoiceIdArray = [];
@@ -753,11 +760,29 @@ exports.payForCharging = async (req, res) => {
       invoiceIdArray = [invoiceId];
     }
 
-    if (invoiceIdArray.length === 0 || !amount || !userId) {
+    // ✅ Validate: Either userId (registered) or guest_info (walk-in) is required
+    if (invoiceIdArray.length === 0 || !amount) {
       return res.status(400).json({
         message:
-          "Missing required fields: invoiceId/invoiceIds (array), amount, userId",
+          "Missing required fields: invoiceId/invoiceIds (array), amount",
       });
+    }
+
+    if (!userId && !guest_info) {
+      return res.status(400).json({
+        message:
+          "Either userId (for registered user) or guest_info (for walk-in customer) is required",
+      });
+    }
+
+    // ✅ Validate guest_info if provided
+    if (!userId && guest_info) {
+      if (!guest_info.name && !guest_info.phone) {
+        return res.status(400).json({
+          message:
+            "guest_info must include at least name or phone for walk-in customers",
+        });
+      }
     }
 
     // Validate type parameter (app or web, default to app)
@@ -776,13 +801,26 @@ exports.payForCharging = async (req, res) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const txnRef = Date.now().toString();
 
-    // 👇 Gửi dữ liệu cần thiết trong vnp_OrderInfo (array invoiceIds)
-    const orderInfo = new URLSearchParams({
+    // 👇 Gửi dữ liệu cần thiết trong vnp_OrderInfo (array invoiceIds + userId hoặc guest_info)
+    const orderInfoParams = {
       invoiceIds: invoiceIdArray.join(","), // Convert array to comma-separated string
-      userId,
       type: "charging",
       paymentType: paymentType, // Store payment type (app or web)
-    }).toString();
+    };
+
+    if (userId) {
+      orderInfoParams.userId = userId;
+    } else if (guest_info) {
+      // Encode guest_info as JSON string
+      orderInfoParams.guest_info = JSON.stringify({
+        name: guest_info.name || null,
+        phone: guest_info.phone || null,
+        plate_number: guest_info.plate_number || null,
+        vehicle_model: guest_info.vehicle_model || null,
+      });
+    }
+
+    const orderInfo = new URLSearchParams(orderInfoParams).toString();
 
     const vnpayResponse = await vnpay.buildPaymentUrl({
       vnp_Amount: amount,
@@ -848,7 +886,12 @@ exports.payForChargingReturn = async (req, res) => {
         new URLSearchParams(decodedOrderInfo)
       );
 
-      const { invoiceIds, userId, paymentType = "app" } = parsedInfo;
+      const {
+        invoiceIds,
+        userId,
+        guest_info,
+        paymentType = "app",
+      } = parsedInfo;
 
       // Parse invoiceIds from comma-separated string to array
       const invoiceIdArray = invoiceIds
@@ -876,24 +919,39 @@ exports.payForChargingReturn = async (req, res) => {
       // Import Invoice model
       const Invoice = require("../models/Invoice");
 
-      // ✅ Lấy company_id từ account của user thanh toán
-      let companyId = null;
-      try {
-        const userAccount = await Account.findById(userId).select("company_id");
-        if (userAccount && userAccount.company_id) {
-          companyId = userAccount.company_id;
+      // ✅ Parse guest_info if exists
+      let parsedGuestInfo = null;
+      if (guest_info) {
+        try {
+          parsedGuestInfo = JSON.parse(guest_info);
+        } catch (e) {
+          console.error("Error parsing guest_info:", e);
         }
-      } catch (accountError) {
-        console.error("Error fetching user account:", accountError);
-        // Tiếp tục với companyId = null nếu không tìm thấy account
       }
 
-      // ✅ Tạo bản ghi thanh toán (lưu tất cả invoice IDs và companyId)
+      // ✅ Lấy company_id từ account của user thanh toán (chỉ khi có userId)
+      let companyId = null;
+      if (userId) {
+        try {
+          const userAccount = await Account.findById(userId).select(
+            "company_id"
+          );
+          if (userAccount && userAccount.company_id) {
+            companyId = userAccount.company_id;
+          }
+        } catch (accountError) {
+          console.error("Error fetching user account:", accountError);
+          // Tiếp tục với companyId = null nếu không tìm thấy account
+        }
+      }
+
+      // ✅ Tạo bản ghi thanh toán (lưu tất cả invoice IDs và companyId/guest_info)
       const newPayment = new Payment({
-        madeBy: userId,
+        madeBy: userId || null, // null nếu là walk-in guest
+        guest_info: parsedGuestInfo, // Lưu thông tin guest nếu có
         type: "charging",
         invoice_ids: invoiceIdArray, // Lưu tất cả invoice IDs vào array
-        companyId: companyId, // Lưu company_id từ account (null nếu không có)
+        companyId: companyId, // Lưu company_id từ account (null nếu không có hoặc là guest)
         vnp_TxnRef: queryParams.vnp_TxnRef,
         vnp_Amount: Number(queryParams.vnp_Amount) / 100,
         vnp_OrderInfo: decodedOrderInfo,
@@ -1045,7 +1103,7 @@ exports.payForChargingReturn = async (req, res) => {
 
 exports.payForChargingNoVnpay = async (req, res) => {
   try {
-    const { invoiceId, invoiceIds, amount, userId } = req.body;
+    const { invoiceId, invoiceIds, amount, userId, guest_info } = req.body;
 
     // Support both single invoiceId and array invoiceIds
     let invoiceIdArray = [];
@@ -1055,14 +1113,35 @@ exports.payForChargingNoVnpay = async (req, res) => {
       invoiceIdArray = [invoiceId];
     }
 
-    // Validate required fields
-    if (invoiceIdArray.length === 0 || !amount || !userId) {
+    // ✅ Validate: Either userId (registered) or guest_info (walk-in) is required
+    if (invoiceIdArray.length === 0 || !amount) {
       return res.status(400).json({
         status: "failed",
         message:
-          "Missing required fields: invoiceId/invoiceIds (array), amount, userId",
+          "Missing required fields: invoiceId/invoiceIds (array), amount",
         type: "charging",
       });
+    }
+
+    if (!userId && !guest_info) {
+      return res.status(400).json({
+        status: "failed",
+        message:
+          "Either userId (for registered user) or guest_info (for walk-in customer) is required",
+        type: "charging",
+      });
+    }
+
+    // ✅ Validate guest_info if provided
+    if (!userId && guest_info) {
+      if (!guest_info.name && !guest_info.phone) {
+        return res.status(400).json({
+          status: "failed",
+          message:
+            "guest_info must include at least name or phone for walk-in customers",
+          type: "charging",
+        });
+      }
     }
 
     // Generate transaction reference
@@ -1070,34 +1149,61 @@ exports.payForChargingNoVnpay = async (req, res) => {
     const transactionNo = `NO-VNPAY-${txnRef}`;
 
     // Create order info string (same format as VNPay version)
-    const orderInfo = new URLSearchParams({
+    const orderInfoParams = {
       invoiceIds: invoiceIdArray.join(","), // Convert array to comma-separated string
-      userId,
       type: "charging",
-    }).toString();
+    };
+
+    if (userId) {
+      orderInfoParams.userId = userId;
+    } else if (guest_info) {
+      orderInfoParams.guest_info = JSON.stringify({
+        name: guest_info.name || null,
+        phone: guest_info.phone || null,
+        plate_number: guest_info.plate_number || null,
+        vehicle_model: guest_info.vehicle_model || null,
+      });
+    }
+
+    const orderInfo = new URLSearchParams(orderInfoParams).toString();
 
     // Import Invoice model
     const Invoice = require("../models/Invoice");
 
     try {
-      // ✅ Get company_id from user account
+      // ✅ Get company_id from user account (chỉ khi có userId)
       let companyId = null;
-      try {
-        const userAccount = await Account.findById(userId).select("company_id");
-        if (userAccount && userAccount.company_id) {
-          companyId = userAccount.company_id;
+      if (userId) {
+        try {
+          const userAccount = await Account.findById(userId).select(
+            "company_id"
+          );
+          if (userAccount && userAccount.company_id) {
+            companyId = userAccount.company_id;
+          }
+        } catch (accountError) {
+          console.error("Error fetching user account:", accountError);
+          // Continue with companyId = null if account not found
         }
-      } catch (accountError) {
-        console.error("Error fetching user account:", accountError);
-        // Continue with companyId = null if account not found
       }
+
+      // ✅ Prepare guest_info for payment record
+      const paymentGuestInfo = guest_info
+        ? {
+            name: guest_info.name || null,
+            phone: guest_info.phone || null,
+            plate_number: guest_info.plate_number || null,
+            vehicle_model: guest_info.vehicle_model || null,
+          }
+        : null;
 
       // ✅ Create payment record with fixed type = "charging"
       const newPayment = new Payment({
-        madeBy: userId,
+        madeBy: userId || null, // null nếu là walk-in guest
+        guest_info: paymentGuestInfo, // Lưu thông tin guest nếu có
         type: "charging", // Fixed type
         invoice_ids: invoiceIdArray, // Save all invoice IDs in array
-        companyId: companyId, // Save company_id from account (null if not found)
+        companyId: companyId, // Save company_id from account (null nếu không có hoặc là guest)
         vnp_TxnRef: txnRef,
         vnp_Amount: amount,
         vnp_OrderInfo: orderInfo,

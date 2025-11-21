@@ -101,7 +101,7 @@ async function updateChargingSessionBattery(sessionId) {
     // Check if reached target or 100%
     if (currentBattery >= 100 || currentBattery >= target) {
       // ✅ AUTO-COMPLETE: Tạo Invoice giống như endSession
-      await autoCompleteSessionWithInvoice(session, currentBattery, target);
+      const invoice = await autoCompleteSessionWithInvoice(session, currentBattery, target);
 
       // Emit socket event for completion
       emitSessionStatusChange(sessionId.toString(), {
@@ -110,6 +110,9 @@ async function updateChargingSessionBattery(sessionId) {
         auto_stopped: true,
         final_battery: currentBattery,
         target_reached: currentBattery >= target,
+        total_amount: invoice.total_amount,
+        final_amount: invoice.final_amount, // ✅ Số tiền cần thanh toán
+        invoice_id: invoice._id,
       });
 
       // Remove from active tracking
