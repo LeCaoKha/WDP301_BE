@@ -442,8 +442,20 @@ exports.endSession = async (req, res) => {
     // ✅ Lấy thông tin khách hàng (registered user hoặc walk-in guest)
     let customer_info = null;
     if (booking && booking.user_id) {
-      // Registered user
+      // Registered user từ booking
       const user = await Account.findById(booking.user_id).select('username email phone');
+      if (user) {
+        customer_info = {
+          type: 'registered',
+          user_id: user._id,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+        };
+      }
+    } else if (vehicle && vehicle.user_id) {
+      // ✅ Registered user từ direct charging (không có booking)
+      const user = await Account.findById(vehicle.user_id).select('username email phone');
       if (user) {
         customer_info = {
           type: 'registered',
@@ -464,11 +476,14 @@ exports.endSession = async (req, res) => {
       };
     }
 
+    // ✅ Get user_id: từ booking (nếu có) hoặc từ vehicle.user_id (direct charging với registered user)
+    const invoice_user_id = booking ? booking.user_id : (vehicle ? vehicle.user_id : null);
+
     const invoice = await Invoice.create({
       // References
       session_id: session._id,
-      user_id: booking ? booking.user_id : null, // null nếu là guest
-      booking_id: booking ? booking._id : null, // null nếu là guest
+      user_id: invoice_user_id, // ✅ Từ booking hoặc vehicle.user_id (direct charging) hoặc null (guest)
+      booking_id: booking ? booking._id : null, // null nếu là guest hoặc direct charging
       vehicle_id: vehicle ? vehicle._id : null, // null nếu là guest
       station_id: station._id,
       chargingPoint_id: chargingPoint._id,
@@ -498,7 +513,7 @@ exports.endSession = async (req, res) => {
         : 'time_based',
       
       // Pricing
-      base_fee: calculation.base_fee,
+      base_fee: base_fee, // ✅ Use calculated base_fee (0 for direct charging, calculation.base_fee for booking)
       price_per_kwh: calculation.price_per_kwh,
       charging_fee: discounted_charging_fee, // ✅ Charging fee sau discount (để lưu vào invoice)
       original_charging_fee: original_charging_fee, // ✅ Charging fee trước discount (để lưu vào invoice)
@@ -652,7 +667,7 @@ exports.endSession = async (req, res) => {
       
       payment_data: {
         session_id: session._id,
-        user_id: booking ? booking.user_id : null,
+        user_id: invoice_user_id, // ✅ Từ booking hoặc vehicle.user_id (direct charging) hoặc null (guest)
         vehicle_id: vehicle ? vehicle._id : null,
         guest_info: !vehicle ? {
           plate_number: session.guest_plate_number,
@@ -880,8 +895,8 @@ exports.updateBatteryLevel = async (req, res) => {
       const original_charging_fee = calculation.charging_fee;
       const base_fee = is_direct_charging ? 0 : calculation.base_fee;
       
-      // Check if vehicle has active subscription
-      if (vehicle.vehicle_subscription_id) {
+      // Check if vehicle has active subscription (chỉ nếu có vehicle đã đăng ký)
+      if (vehicle && vehicle.vehicle_subscription_id) {
         try {
           const vehicleSubscription = await VehicleSubscription.findById(vehicle.vehicle_subscription_id)
             .populate('subscription_id');
@@ -930,8 +945,20 @@ exports.updateBatteryLevel = async (req, res) => {
       // ✅ Lấy thông tin khách hàng (registered user hoặc walk-in guest)
       let customer_info = null;
       if (booking && booking.user_id) {
-        // Registered user
+        // Registered user từ booking
         const user = await Account.findById(booking.user_id).select('username email phone');
+        if (user) {
+          customer_info = {
+            type: 'registered',
+            user_id: user._id,
+            username: user.username,
+            email: user.email,
+            phone: user.phone,
+          };
+        }
+      } else if (vehicle && vehicle.user_id) {
+        // ✅ Registered user từ direct charging (không có booking)
+        const user = await Account.findById(vehicle.user_id).select('username email phone');
         if (user) {
           customer_info = {
             type: 'registered',
@@ -952,11 +979,14 @@ exports.updateBatteryLevel = async (req, res) => {
         };
       }
       
+      // ✅ Get user_id: từ booking (nếu có) hoặc từ vehicle.user_id (direct charging với registered user)
+      const invoice_user_id = booking ? booking.user_id : (vehicle ? vehicle.user_id : null);
+      
       // Create invoice
       const invoice = await Invoice.create({
         session_id: session._id,
-        user_id: booking ? booking.user_id : null, // null nếu là guest
-        booking_id: booking ? booking._id : null, // null nếu là guest
+        user_id: invoice_user_id, // ✅ Từ booking hoặc vehicle.user_id (direct charging) hoặc null (guest)
+        booking_id: booking ? booking._id : null, // null nếu là guest hoặc direct charging
         vehicle_id: vehicle ? vehicle._id : null, // null nếu là guest
         station_id: station._id,
         chargingPoint_id: chargingPoint._id,
@@ -982,7 +1012,7 @@ exports.updateBatteryLevel = async (req, res) => {
           ? 'battery_based' 
           : 'time_based',
         
-        base_fee: calculation.base_fee,
+        base_fee: base_fee, // ✅ Use calculated base_fee (0 for direct charging, calculation.base_fee for booking)
         price_per_kwh: calculation.price_per_kwh,
         charging_fee: discounted_charging_fee,
         original_charging_fee: original_charging_fee,
@@ -1335,26 +1365,8 @@ exports.startDirectCharging = async (req, res) => {
         model: vehicle.model,
       };
 
-      // Tạo booking (optional, có thể bỏ nếu không cần)
-      let estimatedEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      if (vehicle.batteryCapacity) {
-        const battery_to_charge_percent = target - initial_battery_percentage;
-        const energy_needed_kwh = (battery_to_charge_percent / 100) * vehicle.batteryCapacity;
-        const charging_efficiency = 0.90;
-        const estimated_hours = energy_needed_kwh / (power_capacity_kw * charging_efficiency);
-        estimatedEndTime = new Date(now.getTime() + estimated_hours * 3600000);
-        estimatedEndTime = new Date(estimatedEndTime.getTime() + 30 * 60 * 1000);
-      }
-
-      booking = await Booking.create({
-        user_id: user_id,
-        station_id: station._id,
-        vehicle_id: vehicle_id,
-        chargingPoint_id: chargingPoint_id,
-        start_time: now,
-        end_time: estimatedEndTime,
-        status: 'active',
-      });
+      // Direct charging: Không tạo booking cho xe đã đăng ký
+      booking = null;
     }
     // ========== TRƯỜNG HỢP 2: XE CHƯA ĐĂNG KÝ (GUEST/WALK-IN) ==========
     else if (vehicle_info) {
